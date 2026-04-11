@@ -5,7 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_compile_options(-O2 -Wall -Wextra)
+if(MSVC)
+  add_compile_options(/O2 /W4 /EHsc)
+else()
+  add_compile_options(-O2 -Wall -Wextra)
+endif()
 
 set(VOLT_SOURCES
     src/dac.cpp
