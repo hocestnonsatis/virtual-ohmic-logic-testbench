@@ -1,0 +1,43 @@
+# CMake / derleme çıktıları
+build/
+cmake-build-*/
+out/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+
+# Kullanıcıya özel CMake
+CMakeUserPresets.json
+
+# Derlenmiş nesne ve kütüphaneler
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+
+# Yerel araç zincirleri (ör. indirilen CMake)
+.tools/
+
+# IDE ve editör
+.idea/
+*.swp
+*.swo
+*~
+
+# İşletim sistemi
+.DS_Store
+Thumbs.db
