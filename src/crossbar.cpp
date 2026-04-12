@@ -7,7 +7,7 @@
 namespace volt {
 
 CrossbarArray::CrossbarArray(int rows, int cols, const Config& cfg)
-    : rows_(rows), cols_(cols), cfg_(cfg) {
+    : rows_(rows), cols_(cols), cfg_(cfg), g_max_effective_(cfg_.G_max) {
     G_pos_.assign(static_cast<std::size_t>(rows),
                   std::vector<float>(static_cast<std::size_t>(cols), cfg_.G_min));
     G_neg_.assign(static_cast<std::size_t>(rows),
@@ -39,6 +39,7 @@ void CrossbarArray::load_weights(const std::vector<std::vector<float>>& weights)
                 ((1.0f - w) / 2.0f) * cfg_.G_max;
         }
     }
+    g_max_effective_ = cfg_.G_max;
     G_pos_baseline_ = G_pos_;
     G_neg_baseline_ = G_neg_;
 }
@@ -123,6 +124,23 @@ float CrossbarArray::g_pos_at(int i, int j) const {
 
 float CrossbarArray::g_neg_at(int i, int j) const {
     return G_neg_[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+}
+
+void CrossbarArray::apply_uniform_conductance_scale(float scale) {
+    scale = std::clamp(scale, 0.0f, 1.0f);
+    g_max_effective_ = cfg_.G_max * scale;
+    for (int i = 0; i < rows_; ++i) {
+        for (int j = 0; j < cols_; ++j) {
+            float& gp = G_pos_[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+            float& gn = G_neg_[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+            gp *= scale;
+            gn *= scale;
+            gp = std::clamp(gp, 0.0f, g_max_effective_);
+            gn = std::clamp(gn, 0.0f, g_max_effective_);
+        }
+    }
+    G_pos_baseline_ = G_pos_;
+    G_neg_baseline_ = G_neg_;
 }
 
 }  // namespace volt

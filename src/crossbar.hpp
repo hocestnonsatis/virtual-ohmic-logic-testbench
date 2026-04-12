@@ -9,6 +9,7 @@ namespace volt {
 
 class ThermalNoiseInjector;
 class ReadDisturbSimulator;
+class WriteEnduranceSimulator;
 
 class CrossbarArray {
 public:
@@ -34,13 +35,20 @@ public:
     float g_pos_at(int i, int j) const;
     float g_neg_at(int i, int j) const;
 
+    /// Effective ceiling after write-endurance scaling (nominal `cfg.G_max` before stress).
+    float effective_g_max() const { return g_max_effective_; }
+
 private:
     friend class ThermalNoiseInjector;
     friend class ReadDisturbSimulator;
+    friend class WriteEnduranceSimulator;
+
+    void apply_uniform_conductance_scale(float scale);
 
     int rows_;
     int cols_;
     Config cfg_;
+    float g_max_effective_;
     std::vector<std::vector<float>> G_pos_;
     std::vector<std::vector<float>> G_neg_;
     /// Snapshot after last successful load_weights (for drift reporting).

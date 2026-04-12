@@ -18,6 +18,10 @@ struct Config {
     float disturb_ratio = 0.03f;
     float disturb_alpha = 1e-5f;
     unsigned int noise_seed = 42;
+    /// Scales the argument of the analog sigmoid (current vs. mid / quarter-span).
+    float activation_sigmoid_steepness = 6.0f;
+    /// Per programmed cell: conductances scale as exp(-lambda × write_cycles). 0 = no decay in API.
+    float write_endurance_lambda = 0.0f;
 };
 
 }  // namespace volt

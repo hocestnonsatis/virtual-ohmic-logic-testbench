@@ -32,4 +32,15 @@ private:
     Config cfg_;
 };
 
+/// Models conductance loss vs. cumulative write/erase cycles: uniform scale exp(-lambda × cycles).
+class WriteEnduranceSimulator {
+public:
+    explicit WriteEnduranceSimulator(const Config& cfg);
+
+    void apply_write_cycles(CrossbarArray& array, int cycles);
+
+private:
+    Config cfg_;
+};
+
 }  // namespace volt

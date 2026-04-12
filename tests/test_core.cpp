@@ -1,3 +1,4 @@
+#include "activation.hpp"
 #include "adc.hpp"
 #include "config.hpp"
 #include "crossbar.hpp"
@@ -76,6 +77,30 @@ int main() {
         assert_true(lmax == adc.max_level(), "ADC full scale");
         int lhi = adc.quantize(cfg.I_min + cfg.I_range * 100.0f);
         assert_true(lhi == adc.max_level(), "ADC over range clamped");
+
+        assert_near(adc.level_to_dac_normalized(0), 0.0f, 1e-7f, "ADC L0 -> DAC 0");
+        assert_near(adc.level_to_dac_normalized(adc.max_level()), 1.0f, 1e-6f,
+                    "ADC Lmax -> DAC 1");
+        const int mid_lv = adc.max_level() / 2;
+        const float exp_norm =
+            static_cast<float>(mid_lv) / static_cast<float>(adc.max_level());
+        assert_near(adc.level_to_dac_normalized(mid_lv), exp_norm, 1e-6f,
+                    "ADC mid level -> normalized");
+    }
+
+    // --- Analog activation (post-MAC I_net) ---
+    {
+        volt::Config c;
+        assert_near(volt::apply_activation(-1.0e-5f, volt::Activation::ReLU, c), 0.0f, 1e-12f,
+                    "ReLU negative -> 0");
+        assert_near(volt::apply_activation(3.0e-5f, volt::Activation::ReLU, c), 3.0e-5f, 1e-12f,
+                    "ReLU positive passthrough");
+        const float ys =
+            volt::apply_activation(0.0f, volt::Activation::Sigmoid, c);
+        assert_true(ys >= c.I_min && ys <= c.I_min + c.I_range, "Sigmoid in ADC window");
+        const float yhi = volt::apply_activation(c.I_min + c.I_range * 10.0f, volt::Activation::Sigmoid,
+                                                 c);
+        assert_near(yhi, c.I_min + c.I_range, 1e-5f * c.I_range, "Sigmoid large I near top");
     }
 
     // --- Crossbar weights & identity ---
@@ -173,6 +198,31 @@ int main() {
         float expected_delta = static_cast<float>(cycles) * cd.disturb_alpha * (Vapp * cd.disturb_ratio);
         float actual_delta = g1 - g0;
         assert_near(actual_delta, expected_delta, 1e-7f, "read disturb cumulative delta");
+    }
+
+    // --- Write endurance (uniform G scale vs. cycles) ---
+    {
+        volt::Config ce;
+        ce.write_endurance_lambda = 1e-5f;
+        volt::CrossbarArray ar(2, 2, ce);
+        std::vector<std::vector<float>> ww = {{1.0f, 0.0f}, {0.0f, 1.0f}};
+        ar.load_weights(ww);
+        const float g0 = ar.effective_g_max();
+        volt::WriteEnduranceSimulator we(ce);
+        we.apply_write_cycles(ar, 100000);
+        const float g1 = ar.effective_g_max();
+        assert_true(g1 < g0, "endurance reduces effective G_max");
+        const float scale = std::exp(-1e-5f * 100000.0f);
+        assert_near(g1, ce.G_max * scale, 1e-5f * ce.G_max, "exp(-lambda * cycles) scale");
+
+        volt::Config c0;
+        c0.write_endurance_lambda = 0.0f;
+        volt::WriteEnduranceSimulator w0(c0);
+        volt::CrossbarArray ar2(2, 2, c0);
+        ar2.load_weights(ww);
+        const float before = ar2.effective_g_max();
+        w0.apply_write_cycles(ar2, 999999);
+        assert_near(ar2.effective_g_max(), before, 1e-12f, "lambda=0 no endurance");
     }
 
     std::cout << "test_core: all checks passed\n";

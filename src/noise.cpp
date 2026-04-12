@@ -22,7 +22,7 @@ void ThermalNoiseInjector::inject_persistent(CrossbarArray& array) {
     if (cfg_.noise_stddev <= 0.0f) {
         return;
     }
-    const float gmax = array.config().G_max;
+    const float gmax = array.effective_g_max();
     for (int i = 0; i < array.rows(); ++i) {
         for (int j = 0; j < array.cols(); ++j) {
             float np = dist_(rng_);
@@ -45,7 +45,7 @@ void ReadDisturbSimulator::apply_disturb(CrossbarArray& array, int active_row, f
     }
     float V_dis = V_applied * cfg_.disturb_ratio;
     float delta = cfg_.disturb_alpha * V_dis;
-    const float gmax = array.config().G_max;
+    const float gmax = array.effective_g_max();
     for (int neighbor : {active_row - 1, active_row + 1}) {
         if (neighbor < 0 || neighbor >= array.rows()) {
             continue;
@@ -91,6 +91,17 @@ void ReadDisturbSimulator::log_drift_report(const CrossbarArray& array) const {
     double avg = sum_shift / static_cast<double>(n);
     std::cout << "[ReadDisturb] drift: avg conductance shift = " << avg
               << " S, max = " << max_shift << " S\n";
+}
+
+WriteEnduranceSimulator::WriteEnduranceSimulator(const Config& cfg) : cfg_(cfg) {}
+
+void WriteEnduranceSimulator::apply_write_cycles(CrossbarArray& array, int cycles) {
+    if (cycles <= 0 || cfg_.write_endurance_lambda <= 0.0f) {
+        return;
+    }
+    const float scale =
+        std::exp(-cfg_.write_endurance_lambda * static_cast<float>(cycles));
+    array.apply_uniform_conductance_scale(scale);
 }
 
 }  // namespace volt

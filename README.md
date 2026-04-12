@@ -11,7 +11,7 @@ Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar ar
 1. [Concept](#concept) — digital operations vs. simulated analog  
 2. [Quick start](#quick-start) — build, run, tests  
 3. [Repository layout](#repository-layout)  
-4. [Design notes](#design-notes) — differential pair, bipolar ADC, read disturb  
+4. [Design notes](#design-notes) — differential pair, bipolar ADC, read disturb, activations, endurance  
 5. [Scenarios & results](#scenarios--results)  
 6. [Defaults (`config.hpp`)](#defaults-confighpp)  
 7. [Project rules](#project-rules)  
@@ -63,8 +63,9 @@ cd build && ctest --output-on-failure
 │   ├── dac.hpp / dac.cpp   # Digital → voltage
 │   ├── adc.hpp / adc.cpp   # Current → digital
 │   ├── crossbar.hpp / .cpp # Weight matrix (differential pair)
-│   ├── noise.hpp / .cpp    # Thermal noise + read disturb
-│   └── main.cpp            # Pipeline + scenarios A–E
+│   ├── noise.hpp / .cpp    # Thermal noise, read disturb, write endurance
+│   ├── activation.hpp / .cpp # ReLU / sigmoid on I_net (optional)
+│   └── main.cpp            # Pipeline + scenarios A–I
 ├── tests/
 │   ├── test_core.cpp
 │   └── test_equivalence.cpp  # Regression: MSE < 1e-6 (ideal path)
@@ -109,11 +110,34 @@ V_dis = V_applied × disturb_ratio   (default 3%)
 
 Only adjacent rows (±1) are updated per read.
 
+### Analog activation (optional)
+
+After the MAC (`I_net` per column), an optional **ReLU** or **sigmoid** maps current before the ADC. ReLU is `max(0, I)`. Sigmoid uses the window midpoint and span from `config.hpp`:
+
+```
+mid = I_min + I_range / 2
+x   = ((I − mid) / (I_range / 4)) × activation_sigmoid_steepness
+I′  = I_min + I_range × σ(x)
+```
+
+Reference currents apply the same nonlinearity to the ideal linear `I_net` so MSE/SNR stay meaningful.
+
+### Write endurance (optional)
+
+After programming, **cumulative write/erase stress** is modeled as a uniform scale on all conductances:
+
+```
+G_pos, G_neg ← clamp(s × G_pos, s × G_neg)   with   s = exp(−write_endurance_lambda × cycles)
+G_max effective ← G_max × s
+```
+
+Reference currents use `CrossbarArray::effective_g_max()` so MSE compares to the same weakened linear model. Read disturb and thermal noise clamps use the current effective ceiling.
+
 ---
 
 ## Scenarios & results
 
-Five scenarios use a fixed 4×4 weight matrix and input vector. Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`).
+Nine scenarios use fixed 4×4 weight matrices and a 4-vector input (except **F**, which adds a second weight matrix). Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`). The CSV includes **`endurance_cycles`** (0 except in **I**).
 
 | Scenario | ADC bits | Noise | Disturb cycles | Measured SNR | Theory SNR (ADC) |
 |----------|----------|-------|----------------|--------------|------------------|
@@ -122,6 +146,10 @@ Five scenarios use a fixed 4×4 weight matrix and input vector. Output is **`res
 | C — Thermal | 8 | 0.5% G_max | 0 | ~37.6 dB | — |
 | D — Read disturb | 8 | none | 1000 | lower (see CSV) | ~49.9 dB |
 | E — Combined | 4 | 0.5% G_max | 1000 | worst in suite (see CSV) | ~25.3 dB |
+| F — Multi-layer | 8 | none | 0 | lower than A (L1+L2 ADC; see CSV) | ~49.9 dB |
+| G — ReLU | 8 | none | 0 | see CSV | ~49.9 dB |
+| H — Sigmoid | 8 | none | 0 | see CSV | ~49.9 dB |
+| I — Write endurance | 8 | none | 0 | lower than A (see CSV) | ~49.9 dB |
 
 **Theory column:** classical ADC SQNR: `SQNR ≈ 6.02 × n_bits + 1.76 dB`. The gap vs. Scenario A is expected—the formula assumes a full-scale sine; this demo uses a fixed DC vector.
 
@@ -139,6 +167,8 @@ Five scenarios use a fixed 4×4 weight matrix and input vector. Output is **`res
 | `disturb_ratio` | 0.03 | Coupling to neighbors |
 | `disturb_alpha` | 1×10⁻⁵ | Conductance drift per disturb event |
 | `noise_seed` | 42 | Fixed RNG seed for reproducible tests |
+| `activation_sigmoid_steepness` | 6 | Sharpness of analog sigmoid (scenario H) |
+| `write_endurance_lambda` | 0 (1e−5 in **I**) | Exponent in exp(−λ × cycles); 0 disables scaling |
 
 ---
 
@@ -154,9 +184,9 @@ Five scenarios use a fixed 4×4 weight matrix and input vector. Output is **`res
 
 ## Roadmap
 
-- [ ] Multi-layer chaining (one layer’s ADC → next layer’s DAC)
-- [ ] Analog activation models (e.g. nonlinear I–V for ReLU / sigmoid)
-- [ ] Write endurance (e.g. `G_max` vs. write cycles)
+- [x] Multi-layer chaining (one layer’s ADC → next layer’s DAC) — see scenario `F_multilayer` in `main.cpp`; `SimulatedADC::level_to_dac_normalized` feeds the next DAC.
+- [x] Analog activation models (e.g. nonlinear I–V for ReLU / sigmoid) — `activation.hpp`; scenarios `G_relu`, `H_sigmoid`.
+- [x] Write endurance (e.g. `G_max` vs. write cycles) — `WriteEnduranceSimulator` in `noise.hpp` / `.cpp`, `CrossbarArray::effective_g_max()`, scenario `I_write_endurance`.
 - [ ] Benchmark mode (matrix size sweeps, throughput)
 - [ ] JSON config at runtime (no recompile for physics params)
 - [ ] CSV weight import for real pretrained weights

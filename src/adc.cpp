@@ -40,4 +40,13 @@ float SimulatedADC::reconstruct(int level) const {
     return cfg_.I_min + static_cast<float>(level) * i_step();
 }
 
+float SimulatedADC::level_to_dac_normalized(int level) const {
+    const int mx = max_level();
+    if (mx <= 0) {
+        return 0.0f;
+    }
+    level = std::clamp(level, 0, mx);
+    return static_cast<float>(level) / static_cast<float>(mx);
+}
+
 }  // namespace volt

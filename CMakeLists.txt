@@ -16,6 +16,7 @@ set(VOLT_SOURCES
     src/adc.cpp
     src/crossbar.cpp
     src/noise.cpp
+    src/activation.cpp
 )
 
 add_executable(volt ${VOLT_SOURCES} src/main.cpp)
