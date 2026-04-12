@@ -58,11 +58,19 @@ cd build && ./volt --benchmark
 cd build && ./volt --config ../volt.example.json
 ```
 
-**Weight matrix CSV** (optional **4×4**; comma-separated rows; replaces the built-in demo weights for scenarios A–I):
+**Weight matrix CSV** (optional square **N×N**, N ≤ 512; comma-separated rows):
 
 ```bash
 cd build && ./volt --weights ../volt.example.weights.csv
 ```
+
+**Inputs CSV** (optional; **N** values in `[0,1]` for the DAC — one line and/or one number per line). If you omit `--inputs` after `--weights`, a built-in ramp vector is used; with the built-in 4×4 demo (no `--weights`), the original demo input is kept.
+
+```bash
+cd build && ./volt --weights ../volt.example.weights.csv --inputs ../volt.example.inputs.csv
+```
+
+**Second layer (scenario F)** — optional **`--weights2`** N×N CSV; default is **0.5×I** so currents stay easier to bound.
 
 Run tests:
 
@@ -78,6 +86,7 @@ cd build && ctest --output-on-failure
 .
 ├── volt.example.json       # Example `--config` (subset of fields)
 ├── volt.example.weights.csv # Example `--weights` (4×4)
+├── volt.example.inputs.csv  # Example `--inputs` (length 4)
 ├── src/
 │   ├── config.hpp          # Physical constants
 │   ├── config_json.hpp / .cpp # Optional JSON overlay for physics params
@@ -164,7 +173,7 @@ Reference currents use `CrossbarArray::effective_g_max()` so MSE compares to the
 
 ## Scenarios & results
 
-Nine scenarios use fixed 4×4 weight matrices and a 4-vector input (except **F**, which adds a second weight matrix). Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`). The CSV includes **`endurance_cycles`** (0 except in **I**).
+Nine scenarios use one **N×N** weight matrix (default **N** = 4) and an **N**-vector input. Scenario **F** uses a second **N×N** matrix (default **0.5×I**). Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`). The CSV includes **`endurance_cycles`** (0 except in **I**).
 
 | Scenario | ADC bits | Noise | Disturb cycles | Measured SNR | Theory SNR (ADC) |
 |----------|----------|-------|----------------|--------------|------------------|
@@ -205,9 +214,17 @@ Pass a single JSON **object** whose keys match the table above (same names as in
 { "G_max": 1e-4, "I_min": -6.02e-5, "noise_seed": 42 }
 ```
 
-### CSV weights (`--weights`)
+### CSV weights (`--weights`), inputs (`--inputs`), second layer (`--weights2`)
 
-Provide a **square 4×4** matrix (this build): one row per line, comma-separated numbers in **[-1, 1]** (values outside are clamped, with a warning). Lines starting with `#` after spaces are comments; empty lines are ignored. The default input vector is still the built-in demo; scenario **F** keeps a fixed second-layer diagonal matrix. For currents to stay in the default ADC window you may need to tune `I_min` / `I_range` via `--config` when using arbitrary pretrained weights.
+**`--weights`:** square **N×N** matrix (1 ≤ N ≤ 512): one row per line, comma-separated numbers in **[-1, 1]** (values outside are clamped, with a warning). Comment lines (`#`) and empty lines follow the same rules as before.
+
+**`--inputs`:** exactly **N** numbers for the DAC path (comma-separated and/or one value per line). Values outside **[0, 1]** are clamped with a warning.
+
+**`--weights2`:** optional second **N×N** matrix for scenario **F** only; must match **N**. If omitted, **F** uses **0.5×I** (helps keep **I_net** in range for the default ADC window).
+
+Without **`--weights`**, the original 4×4 demo matrix and demo input vector are used. With **`--weights`** but without **`--inputs`**, inputs default to a ramp across **[0.15, 0.85]**. For the same numeric behavior as the classic demo while using CSV files, use **`volt.example.weights.csv`** and **`volt.example.inputs.csv`** together.
+
+For arbitrary pretrained weights, tune **`I_min` / `I_range`** (and possibly **`G_max`**) via **`--config`** so the ADC window matches your signal swing.
 
 ---
 
@@ -228,4 +245,4 @@ Provide a **square 4×4** matrix (this build): one row per line, comma-separated
 - [x] Write endurance (e.g. `G_max` vs. write cycles) — `WriteEnduranceSimulator` in `noise.hpp` / `.cpp`, `CrossbarArray::effective_g_max()`, scenario `I_write_endurance`.
 - [x] Benchmark mode (matrix size sweeps, throughput) — `./volt --benchmark`; `benchmark.csv` (GMAC/s, forwards/s).
 - [x] JSON config at runtime (no recompile for physics params) — `./volt --config FILE`; `config_json.hpp`; `volt.example.json`.
-- [x] CSV weight import for real pretrained weights — `./volt --weights FILE`; `weights_csv.hpp`; `volt.example.weights.csv` (4×4).
+- [x] CSV weight import for real pretrained weights — `./volt --weights FILE`; optional **`--inputs`**, **`--weights2`**, N×N pipeline; `weights_csv.hpp`; `volt.example.weights.csv` / `volt.example.inputs.csv`.

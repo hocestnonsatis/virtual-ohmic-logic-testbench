@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -65,15 +66,21 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
                             bool use_persistent_noise, bool print_currents,
                             Activation activation = Activation::Identity,
                             int write_endurance_cycles = 0) {
+    const int n = static_cast<int>(W_double.size());
+    if (n < 1 || static_cast<int>(W_double[0].size()) != n ||
+        static_cast<int>(digital_inputs.size()) != n) {
+        throw std::invalid_argument("run_scenario: W square and input length must match dimension");
+    }
     SimulatedDAC dac(cfg);
-    CrossbarArray crossbar(4, 4, cfg);
+    CrossbarArray crossbar(n, n, cfg);
     SimulatedADC adc(cfg);
     ThermalNoiseInjector thermal(cfg);
     ReadDisturbSimulator disturb(cfg);
 
-    std::vector<std::vector<float>> Wf(4, std::vector<float>(4));
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
+    std::vector<std::vector<float>> Wf(static_cast<std::size_t>(n),
+                                         std::vector<float>(static_cast<std::size_t>(n)));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
             Wf[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
                 static_cast<float>(W_double[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]);
         }
@@ -89,16 +96,19 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
         thermal.inject_persistent(crossbar);
     }
 
+    const int active_row = n <= 1 ? 0 : std::min(2, n - 1);
     for (int c = 0; c < disturb_cycles; ++c) {
-        disturb.apply_disturb(crossbar, 2, cfg.V_max);
+        disturb.apply_disturb(crossbar, active_row, cfg.V_max);
     }
 
     std::vector<float> voltages = dac.convert(digital_inputs);
 
-    std::vector<std::vector<float>> Gp(4, std::vector<float>(4));
-    std::vector<std::vector<float>> Gn(4, std::vector<float>(4));
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
+    std::vector<std::vector<float>> Gp(static_cast<std::size_t>(n),
+                                       std::vector<float>(static_cast<std::size_t>(n)));
+    std::vector<std::vector<float>> Gn(static_cast<std::size_t>(n),
+                                       std::vector<float>(static_cast<std::size_t>(n)));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
             Gp[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = crossbar.g_pos_at(i, j);
             Gn[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = crossbar.g_neg_at(i, j);
         }
@@ -107,26 +117,26 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
     std::vector<float> currents;
     if (use_transient_noise) {
         std::vector<float> flat;
-        flat.reserve(32);
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
+        flat.reserve(static_cast<std::size_t>(2 * n * n));
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
                 flat.push_back(Gp[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]);
             }
         }
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
                 flat.push_back(Gn[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]);
             }
         }
         thermal.inject_transient(flat);
         std::size_t k = 0;
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
                 Gp[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = flat[k++];
             }
         }
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
                 Gn[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = flat[k++];
             }
         }
@@ -136,7 +146,7 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
     }
 
     if (activation != Activation::Identity) {
-        for (int j = 0; j < 4; ++j) {
+        for (int j = 0; j < n; ++j) {
             currents[static_cast<std::size_t>(j)] = volt::apply_activation(
                 currents[static_cast<std::size_t>(j)], activation, cfg);
         }
@@ -145,7 +155,7 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
     if (print_currents) {
         std::cout << std::scientific << std::setprecision(6);
         std::cout << "[Scenario A] raw I_net before ADC (A): ";
-        for (int j = 0; j < 4; ++j) {
+        for (int j = 0; j < n; ++j) {
             if (j > 0) {
                 std::cout << ", ";
             }
@@ -158,7 +168,7 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
     std::vector<double> I_ref = reference_currents(
         voltages, W_double, static_cast<double>(crossbar.effective_g_max()));
     if (activation != Activation::Identity) {
-        for (int j = 0; j < 4; ++j) {
+        for (int j = 0; j < n; ++j) {
             I_ref[static_cast<std::size_t>(j)] = volt::apply_activation(
                 I_ref[static_cast<std::size_t>(j)], activation, cfg);
         }
@@ -167,7 +177,6 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
     double mse = 0.0;
     double max_abs = 0.0;
     double mean_ref_sq = 0.0;
-    const int n = 4;
     for (int j = 0; j < n; ++j) {
         int level = adc.quantize(currents[static_cast<std::size_t>(j)]);
         float recon = adc.reconstruct(level);
@@ -213,15 +222,22 @@ ScenarioResult run_two_layer_scenario(const std::string& name, Config cfg,
                                       const std::vector<std::vector<double>>& W1,
                                       const std::vector<std::vector<double>>& W2,
                                       const std::vector<float>& digital_inputs) {
+    const int n = static_cast<int>(W1.size());
+    if (n < 1 || static_cast<int>(W1[0].size()) != n || static_cast<int>(W2.size()) != n ||
+        static_cast<int>(W2[0].size()) != n || static_cast<int>(digital_inputs.size()) != n) {
+        throw std::invalid_argument("run_two_layer_scenario: W1, W2, inputs dimension mismatch");
+    }
     SimulatedDAC dac(cfg);
-    CrossbarArray crossbar1(4, 4, cfg);
-    CrossbarArray crossbar2(4, 4, cfg);
+    CrossbarArray crossbar1(n, n, cfg);
+    CrossbarArray crossbar2(n, n, cfg);
     SimulatedADC adc(cfg);
 
-    std::vector<std::vector<float>> Wf1(4, std::vector<float>(4));
-    std::vector<std::vector<float>> Wf2(4, std::vector<float>(4));
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
+    std::vector<std::vector<float>> Wf1(static_cast<std::size_t>(n),
+                                         std::vector<float>(static_cast<std::size_t>(n)));
+    std::vector<std::vector<float>> Wf2(static_cast<std::size_t>(n),
+                                         std::vector<float>(static_cast<std::size_t>(n)));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
             Wf1[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
                 static_cast<float>(W1[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]);
             Wf2[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
@@ -234,30 +250,30 @@ ScenarioResult run_two_layer_scenario(const std::string& name, Config cfg,
     std::vector<float> voltages1 = dac.convert(digital_inputs);
     std::vector<float> currents1 = crossbar1.apply_voltage(voltages1);
 
-    std::vector<float> dac_inputs_l2(4);
-    for (int j = 0; j < 4; ++j) {
+    std::vector<float> dac_inputs_l2(static_cast<std::size_t>(n));
+    for (int j = 0; j < n; ++j) {
         const int lv = adc.quantize(currents1[static_cast<std::size_t>(j)]);
         dac_inputs_l2[static_cast<std::size_t>(j)] = adc.level_to_dac_normalized(lv);
     }
     std::vector<float> voltages2 = dac.convert(dac_inputs_l2);
     std::vector<float> currents2 = crossbar2.apply_voltage(voltages2);
 
-    std::vector<double> I1_ref = reference_currents(voltages1, W1, static_cast<double>(cfg.G_max));
-    std::vector<float> norms_ideal(4);
-    for (int j = 0; j < 4; ++j) {
+    std::vector<double> I1_ref =
+        reference_currents(voltages1, W1, static_cast<double>(crossbar1.effective_g_max()));
+    std::vector<float> norms_ideal(static_cast<std::size_t>(n));
+    for (int j = 0; j < n; ++j) {
         double t = (I1_ref[static_cast<std::size_t>(j)] - static_cast<double>(cfg.I_min)) /
                    static_cast<double>(cfg.I_range);
         t = std::clamp(t, 0.0, 1.0);
         norms_ideal[static_cast<std::size_t>(j)] = static_cast<float>(t);
     }
     std::vector<float> voltages2_ref = dac.convert(norms_ideal);
-    std::vector<double> I2_ref =
-        reference_currents(voltages2_ref, W2, static_cast<double>(cfg.G_max));
+    std::vector<double> I2_ref = reference_currents(
+        voltages2_ref, W2, static_cast<double>(crossbar2.effective_g_max()));
 
     double mse = 0.0;
     double max_abs = 0.0;
     double mean_ref_sq = 0.0;
-    const int n = 4;
     for (int j = 0; j < n; ++j) {
         const int level = adc.quantize(currents2[static_cast<std::size_t>(j)]);
         const float recon = adc.reconstruct(level);
@@ -309,12 +325,35 @@ const std::vector<std::vector<double>> k_default_W = {
 };
 const std::vector<float> k_default_inputs = {0.9f, 0.4f, 0.7f, 0.2f};
 
+std::vector<float> default_inputs_for_n(int n) {
+    std::vector<float> v(static_cast<std::size_t>(n), 0.5f);
+    if (n <= 1) {
+        return v;
+    }
+    for (int i = 0; i < n; ++i) {
+        v[static_cast<std::size_t>(i)] =
+            0.15f + 0.7f * static_cast<float>(i) / static_cast<float>(n - 1);
+    }
+    return v;
+}
+
+std::vector<std::vector<double>> default_w2_diagonal(int n, double diag) {
+    std::vector<std::vector<double>> W2(static_cast<std::size_t>(n),
+                                        std::vector<double>(static_cast<std::size_t>(n), 0.0));
+    for (int i = 0; i < n; ++i) {
+        W2[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] = diag;
+    }
+    return W2;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     volt::Config defaults;
     bool do_benchmark = false;
     std::string weights_path;
+    std::string weights2_path;
+    std::string inputs_path;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--benchmark") == 0) {
             do_benchmark = true;
@@ -334,11 +373,27 @@ int main(int argc, char** argv) {
                 return 1;
             }
             weights_path = argv[++i];
+        } else if (std::strcmp(argv[i], "--weights2") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --weights2 requires a CSV file path\n";
+                return 1;
+            }
+            weights2_path = argv[++i];
+        } else if (std::strcmp(argv[i], "--inputs") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --inputs requires a CSV file path\n";
+                return 1;
+            }
+            inputs_path = argv[++i];
         } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
-            std::cout << "Usage: volt [--config FILE] [--weights FILE] [--benchmark] [--help]\n"
-                         "  --config FILE   merge physics parameters from a JSON object (see README)\n"
-                         "  --weights FILE  4×4 signed weight matrix (CSV); default is built-in demo\n"
-                         "  --benchmark     run matrix-size sweep; writes benchmark.csv\n";
+            std::cout << "Usage: volt [--config FILE] [--weights FILE] [--weights2 FILE] [--inputs "
+                         "FILE] [--benchmark] [--help]\n"
+                         "  --config FILE    merge physics parameters from a JSON object (see README)\n"
+                         "  --weights FILE   N×N signed weight matrix (CSV); default is built-in 4×4 demo\n"
+                         "  --weights2 FILE  second-layer N×N matrix for scenario F (optional; default "
+                         "0.5×I)\n"
+                         "  --inputs FILE    N DAC inputs in [0,1] (CSV); required size matches --weights\n"
+                         "  --benchmark      run matrix-size sweep; writes benchmark.csv\n";
             return 0;
         } else {
             std::cerr << "error: unknown argument \"" << argv[i] << "\" (try --help)\n";
@@ -359,7 +414,34 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    const std::vector<float>& inputs = k_default_inputs;
+    const int n = static_cast<int>(W.size());
+
+    std::vector<std::vector<double>> W2 = default_w2_diagonal(n, 0.5);
+    if (!weights2_path.empty()) {
+        std::string err;
+        if (!volt::load_weights_csv_file(weights2_path, W2, err)) {
+            std::cerr << "error: " << err << '\n';
+            return 1;
+        }
+        if (static_cast<int>(W2.size()) != n) {
+            std::cerr << "error: --weights2 matrix dimension must match --weights (" << n << "×" << n
+                      << ")\n";
+            return 1;
+        }
+    }
+
+    std::vector<float> inputs;
+    if (!inputs_path.empty()) {
+        std::string err;
+        if (!volt::load_inputs_csv_file(inputs_path, n, inputs, err)) {
+            std::cerr << "error: " << err << '\n';
+            return 1;
+        }
+    } else if (weights_path.empty()) {
+        inputs = k_default_inputs;
+    } else {
+        inputs = default_inputs_for_n(n);
+    }
 
     std::vector<ScenarioResult> results;
 
@@ -389,13 +471,6 @@ int main(int argc, char** argv) {
     }
     {
         Config cfg = defaults;
-        // Second layer scaled so I_net stays inside default I_min / I_range window.
-        const std::vector<std::vector<double>> W2 = {
-            {0.5, 0.0, 0.0, 0.0},
-            {0.0, 0.5, 0.0, 0.0},
-            {0.0, 0.0, 0.5, 0.0},
-            {0.0, 0.0, 0.0, 0.5},
-        };
         results.push_back(run_two_layer_scenario("F_multilayer", cfg, W, W2, inputs));
     }
     {
@@ -442,18 +517,20 @@ int main(int argc, char** argv) {
 
     {
         Config cfg = defaults;
-        CrossbarArray cb(4, 4, cfg);
-        std::vector<std::vector<float>> Wf(4, std::vector<float>(4));
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
+        CrossbarArray cb(n, n, cfg);
+        std::vector<std::vector<float>> Wf(static_cast<std::size_t>(n),
+                                           std::vector<float>(static_cast<std::size_t>(n)));
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
                 Wf[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
                     static_cast<float>(W[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]);
             }
         }
         cb.load_weights(Wf);
         ReadDisturbSimulator ds(cfg);
+        const int drift_row = n <= 1 ? 0 : std::min(2, n - 1);
         for (int c = 0; c < 1000; ++c) {
-            ds.apply_disturb(cb, 2, cfg.V_max);
+            ds.apply_disturb(cb, drift_row, cfg.V_max);
         }
         ds.log_drift_report(cb);
     }

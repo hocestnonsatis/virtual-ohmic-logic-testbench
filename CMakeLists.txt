@@ -41,5 +41,5 @@ set_tests_properties(volt_benchmark PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_
 add_test(NAME volt_config COMMAND $<TARGET_FILE:volt> --config ${CMAKE_SOURCE_DIR}/volt.example.json)
 set_tests_properties(volt_config PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_test(NAME volt_weights COMMAND $<TARGET_FILE:volt> --weights ${CMAKE_SOURCE_DIR}/volt.example.weights.csv)
+add_test(NAME volt_weights COMMAND $<TARGET_FILE:volt> --weights ${CMAKE_SOURCE_DIR}/volt.example.weights.csv --inputs ${CMAKE_SOURCE_DIR}/volt.example.inputs.csv)
 set_tests_properties(volt_weights PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

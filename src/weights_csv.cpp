@@ -87,8 +87,8 @@ bool load_weights_csv_file(const std::string& path, std::vector<std::vector<doub
         err = "CSV: matrix must be square";
         return false;
     }
-    if (n != 4) {
-        err = "CSV: only 4×4 weights are supported in this build";
+    if (n > static_cast<std::size_t>(k_max_weights_dim)) {
+        err = "CSV: matrix dimension exceeds k_max_weights_dim";
         return false;
     }
     for (std::size_t i = 0; i < n; ++i) {
@@ -100,6 +100,56 @@ bool load_weights_csv_file(const std::string& path, std::vector<std::vector<doub
                 w = std::max(-1.0, std::min(1.0, w));
             }
         }
+    }
+    return true;
+}
+
+bool load_inputs_csv_file(const std::string& path, int expected_n, std::vector<float>& out,
+                          std::string& err) {
+    if (expected_n < 1) {
+        err = "inputs: expected_n must be positive";
+        return false;
+    }
+    std::ifstream f(path);
+    if (!f) {
+        err = "cannot open inputs file: " + path;
+        return false;
+    }
+    std::vector<double> acc;
+    std::string line;
+    int line_no = 0;
+    while (std::getline(f, line)) {
+        ++line_no;
+        trim_inplace(line);
+        if (line.empty()) {
+            continue;
+        }
+        if (line[0] == '#') {
+            continue;
+        }
+        std::vector<double> row;
+        if (!parse_line_row(line, row, err)) {
+            err = "line " + std::to_string(line_no) + ": " + err;
+            return false;
+        }
+        for (double x : row) {
+            acc.push_back(x);
+        }
+    }
+    if (acc.size() != static_cast<std::size_t>(expected_n)) {
+        err = "inputs: expected " + std::to_string(expected_n) + " values, got " +
+              std::to_string(acc.size());
+        return false;
+    }
+    out.resize(static_cast<std::size_t>(expected_n));
+    for (int i = 0; i < expected_n; ++i) {
+        float v = static_cast<float>(acc[static_cast<std::size_t>(i)]);
+        if (v < 0.0f || v > 1.0f) {
+            std::cerr << "[inputs_csv] warning: input " << i << " = " << v
+                      << " outside [0,1]; clamping\n";
+            v = std::max(0.0f, std::min(1.0f, v));
+        }
+        out[static_cast<std::size_t>(i)] = v;
     }
     return true;
 }

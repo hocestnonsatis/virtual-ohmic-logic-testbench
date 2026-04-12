@@ -261,6 +261,31 @@ int main() {
         assert_near(static_cast<float>(W[0][0]), 1.0f, 1e-9f, "CSV W(0,0)");
         assert_near(static_cast<float>(W[1][1]), 1.0f, 1e-9f, "CSV W(1,1)");
     }
+    {
+        const char* tmp = "volt_test_weights_3.csv";
+        std::ofstream f(tmp);
+        f << "1,0,0\n0,-1,0\n0,0,0.5\n";
+        f.close();
+        std::vector<std::vector<double>> W;
+        std::string err;
+        assert_true(volt::load_weights_csv_file(tmp, W, err), err.c_str());
+        std::remove(tmp);
+        assert_true(static_cast<int>(W.size()) == 3, "3x3 rows");
+        assert_near(static_cast<float>(W[2][2]), 0.5f, 1e-9f, "3x3 corner");
+    }
+    // --- CSV inputs ---
+    {
+        const char* tmp = "volt_test_inputs.csv";
+        std::ofstream f(tmp);
+        f << "0.2\n0.5\n# c\n0.8\n";
+        f.close();
+        std::vector<float> in;
+        std::string err;
+        assert_true(volt::load_inputs_csv_file(tmp, 3, in, err), err.c_str());
+        std::remove(tmp);
+        assert_near(in[0], 0.2f, 1e-9f, "in[0]");
+        assert_near(in[2], 0.8f, 1e-9f, "in[2]");
+    }
 
     std::cout << "test_core: all checks passed\n";
     return 0;
