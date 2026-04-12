@@ -17,6 +17,7 @@ set(VOLT_SOURCES
     src/crossbar.cpp
     src/noise.cpp
     src/activation.cpp
+    src/benchmark.cpp
 )
 
 add_executable(volt ${VOLT_SOURCES} src/main.cpp)
@@ -32,3 +33,5 @@ add_volt_test(test_core tests/test_core.cpp)
 add_volt_test(test_equivalence tests/test_equivalence.cpp)
 
 enable_testing()
+add_test(NAME volt_benchmark COMMAND $<TARGET_FILE:volt> --benchmark)
+set_tests_properties(volt_benchmark PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

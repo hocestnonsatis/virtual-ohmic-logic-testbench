@@ -46,6 +46,12 @@ Run the simulator from the build directory (so `results.csv` is written next to 
 cd build && ./volt
 ```
 
+**Benchmark mode** (matrix size sweep, ~40 ms per size; writes `benchmark.csv`):
+
+```bash
+cd build && ./volt --benchmark
+```
+
 Run tests:
 
 ```bash
@@ -65,6 +71,7 @@ cd build && ctest --output-on-failure
 │   ├── crossbar.hpp / .cpp # Weight matrix (differential pair)
 │   ├── noise.hpp / .cpp    # Thermal noise, read disturb, write endurance
 │   ├── activation.hpp / .cpp # ReLU / sigmoid on I_net (optional)
+│   ├── benchmark.hpp / .cpp  # Optional `--benchmark` sweep
 │   └── main.cpp            # Pipeline + scenarios A–I
 ├── tests/
 │   ├── test_core.cpp
@@ -133,6 +140,10 @@ G_max effective ← G_max × s
 
 Reference currents use `CrossbarArray::effective_g_max()` so MSE compares to the same weakened linear model. Read disturb and thermal noise clamps use the current effective ceiling.
 
+### Benchmark mode
+
+`./volt --benchmark` times steady-state `CrossbarArray::apply_voltage` for n × n arrays with deterministic weights and DAC inputs. Each sweep step runs for about 40 ms wall time; **GMAC/s** uses n² MACs per forward (one multiply per matrix entry contributing to each output column). Output: `benchmark.csv` plus a short human-readable summary on stdout.
+
 ---
 
 ## Scenarios & results
@@ -187,6 +198,6 @@ Nine scenarios use fixed 4×4 weight matrices and a 4-vector input (except **F**
 - [x] Multi-layer chaining (one layer’s ADC → next layer’s DAC) — see scenario `F_multilayer` in `main.cpp`; `SimulatedADC::level_to_dac_normalized` feeds the next DAC.
 - [x] Analog activation models (e.g. nonlinear I–V for ReLU / sigmoid) — `activation.hpp`; scenarios `G_relu`, `H_sigmoid`.
 - [x] Write endurance (e.g. `G_max` vs. write cycles) — `WriteEnduranceSimulator` in `noise.hpp` / `.cpp`, `CrossbarArray::effective_g_max()`, scenario `I_write_endurance`.
-- [ ] Benchmark mode (matrix size sweeps, throughput)
+- [x] Benchmark mode (matrix size sweeps, throughput) — `./volt --benchmark`; `benchmark.csv` (GMAC/s, forwards/s).
 - [ ] JSON config at runtime (no recompile for physics params)
 - [ ] CSV weight import for real pretrained weights

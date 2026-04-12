@@ -1,5 +1,6 @@
 #include "activation.hpp"
 #include "adc.hpp"
+#include "benchmark.hpp"
 #include "config.hpp"
 #include "crossbar.hpp"
 #include "dac.hpp"
@@ -8,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -295,7 +297,12 @@ ScenarioResult run_two_layer_scenario(const std::string& name, Config cfg,
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc >= 2 && std::strcmp(argv[1], "--benchmark") == 0) {
+        volt::run_benchmark_suite(volt::Config{});
+        return 0;
+    }
+
     const std::vector<std::vector<double>> W = {
         {0.8, -0.3, 0.5, -0.1},
         {-0.6, 0.9, -0.2, 0.7},
