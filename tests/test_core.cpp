@@ -1,6 +1,7 @@
 #include "activation.hpp"
 #include "adc.hpp"
 #include "config.hpp"
+#include "config_json.hpp"
 #include "crossbar.hpp"
 #include "dac.hpp"
 #include "noise.hpp"
@@ -11,6 +12,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -223,6 +225,22 @@ int main() {
         const float before = ar2.effective_g_max();
         w0.apply_write_cycles(ar2, 999999);
         assert_near(ar2.effective_g_max(), before, 1e-12f, "lambda=0 no endurance");
+    }
+
+    // --- JSON config (subset parser) ---
+    {
+        volt::Config c;
+        std::string err;
+        const std::string_view j = R"({"G_max":2e-4,"noise_seed":99,"n_bits_adc":6})";
+        assert_true(volt::load_config_from_json(j, c, err), "JSON parse ok");
+        assert_true(err.empty(), "JSON no error string");
+        assert_near(c.G_max, 2e-4f, 1e-12f, "JSON G_max");
+        assert_true(c.noise_seed == 99u, "JSON noise_seed");
+        assert_true(c.n_bits_adc == 6, "JSON n_bits_adc");
+
+        volt::Config c2;
+        assert_true(volt::load_config_from_json(R"({})", c2, err), "empty JSON object");
+        assert_near(c2.G_max, volt::Config{}.G_max, 1e-12f, "empty JSON preserves defaults");
     }
 
     std::cout << "test_core: all checks passed\n";

@@ -1,6 +1,7 @@
 #include "activation.hpp"
 #include "adc.hpp"
 #include "benchmark.hpp"
+#include "config_json.hpp"
 #include "config.hpp"
 #include "crossbar.hpp"
 #include "dac.hpp"
@@ -298,8 +299,34 @@ ScenarioResult run_two_layer_scenario(const std::string& name, Config cfg,
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc >= 2 && std::strcmp(argv[1], "--benchmark") == 0) {
-        volt::run_benchmark_suite(volt::Config{});
+    volt::Config defaults;
+    bool do_benchmark = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--benchmark") == 0) {
+            do_benchmark = true;
+        } else if (std::strcmp(argv[i], "--config") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --config requires a JSON file path\n";
+                return 1;
+            }
+            std::string err;
+            if (!volt::load_config_from_json_file(argv[++i], defaults, err)) {
+                std::cerr << "error: " << err << '\n';
+                return 1;
+            }
+        } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
+            std::cout << "Usage: volt [--config FILE] [--benchmark] [--help]\n"
+                         "  --config FILE   merge physics parameters from a JSON object (see README)\n"
+                         "  --benchmark     run matrix-size sweep; writes benchmark.csv\n";
+            return 0;
+        } else {
+            std::cerr << "error: unknown argument \"" << argv[i] << "\" (try --help)\n";
+            return 1;
+        }
+    }
+
+    if (do_benchmark) {
+        volt::run_benchmark_suite(defaults);
         return 0;
     }
 
@@ -314,31 +341,31 @@ int main(int argc, char** argv) {
     std::vector<ScenarioResult> results;
 
     {
-        Config cfg;
+        Config cfg = defaults;
         results.push_back(run_scenario("A_ideal", cfg, 0, W, inputs, false, false, true));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         cfg.n_bits_adc = 4;
         results.push_back(run_scenario("B_low_adc", cfg, 0, W, inputs, false, false, false));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         cfg.noise_stddev = 0.005f * cfg.G_max;
         results.push_back(run_scenario("C_thermal", cfg, 0, W, inputs, true, false, false));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         results.push_back(run_scenario("D_read_disturb", cfg, 1000, W, inputs, false, false, false));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         cfg.n_bits_adc = 4;
         cfg.noise_stddev = 0.005f * cfg.G_max;
         results.push_back(run_scenario("E_combined", cfg, 1000, W, inputs, true, true, false));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         // Second layer scaled so I_net stays inside default I_min / I_range window.
         const std::vector<std::vector<double>> W2 = {
             {0.5, 0.0, 0.0, 0.0},
@@ -349,17 +376,17 @@ int main(int argc, char** argv) {
         results.push_back(run_two_layer_scenario("F_multilayer", cfg, W, W2, inputs));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         results.push_back(run_scenario("G_relu", cfg, 0, W, inputs, false, false, false,
                                        Activation::ReLU));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         results.push_back(run_scenario("H_sigmoid", cfg, 0, W, inputs, false, false, false,
                                        Activation::Sigmoid));
     }
     {
-        Config cfg;
+        Config cfg = defaults;
         cfg.write_endurance_lambda = 1e-5f;
         results.push_back(run_scenario("I_write_endurance", cfg, 0, W, inputs, false, false, false,
                                        Activation::Identity, 80000));
@@ -391,7 +418,7 @@ int main(int argc, char** argv) {
     }
 
     {
-        Config cfg;
+        Config cfg = defaults;
         CrossbarArray cb(4, 4, cfg);
         std::vector<std::vector<float>> Wf(4, std::vector<float>(4));
         for (int i = 0; i < 4; ++i) {

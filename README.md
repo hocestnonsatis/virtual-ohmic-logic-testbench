@@ -52,6 +52,12 @@ cd build && ./volt
 cd build && ./volt --benchmark
 ```
 
+**Physics JSON** (optional; merged onto defaults for all scenarios and for `--benchmark`):
+
+```bash
+cd build && ./volt --config ../volt.example.json
+```
+
 Run tests:
 
 ```bash
@@ -64,8 +70,10 @@ cd build && ctest --output-on-failure
 
 ```
 .
+├── volt.example.json       # Example `--config` (subset of fields)
 ├── src/
 │   ├── config.hpp          # Physical constants
+│   ├── config_json.hpp / .cpp # Optional JSON overlay for physics params
 │   ├── dac.hpp / dac.cpp   # Digital → voltage
 │   ├── adc.hpp / adc.cpp   # Current → digital
 │   ├── crossbar.hpp / .cpp # Weight matrix (differential pair)
@@ -181,6 +189,14 @@ Nine scenarios use fixed 4×4 weight matrices and a 4-vector input (except **F**
 | `activation_sigmoid_steepness` | 6 | Sharpness of analog sigmoid (scenario H) |
 | `write_endurance_lambda` | 0 (1e−5 in **I**) | Exponent in exp(−λ × cycles); 0 disables scaling |
 
+### JSON overlay (`--config`)
+
+Pass a single JSON **object** whose keys match the table above (same names as in `config.hpp`). Values must be JSON numbers. Unknown keys are ignored. Example:
+
+```json
+{ "G_max": 1e-4, "I_min": -6.02e-5, "noise_seed": 42 }
+```
+
 ---
 
 ## Project rules
@@ -199,5 +215,5 @@ Nine scenarios use fixed 4×4 weight matrices and a 4-vector input (except **F**
 - [x] Analog activation models (e.g. nonlinear I–V for ReLU / sigmoid) — `activation.hpp`; scenarios `G_relu`, `H_sigmoid`.
 - [x] Write endurance (e.g. `G_max` vs. write cycles) — `WriteEnduranceSimulator` in `noise.hpp` / `.cpp`, `CrossbarArray::effective_g_max()`, scenario `I_write_endurance`.
 - [x] Benchmark mode (matrix size sweeps, throughput) — `./volt --benchmark`; `benchmark.csv` (GMAC/s, forwards/s).
-- [ ] JSON config at runtime (no recompile for physics params)
+- [x] JSON config at runtime (no recompile for physics params) — `./volt --config FILE`; `config_json.hpp`; `volt.example.json`.
 - [ ] CSV weight import for real pretrained weights
