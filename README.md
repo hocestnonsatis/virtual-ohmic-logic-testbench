@@ -1,5 +1,19 @@
 # VOLT — Virtual Ohmic Logic Testbench
 
+<p align="center">
+  <a href="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/releases/latest"><img src="https://img.shields.io/github/v/release/hocestnonsatis/virtual-ohmic-logic-testbench?sort=semver&amp;logo=github&amp;label=release" alt="Latest release" /></a>
+  &nbsp;
+  <a href="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml"><img src="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml/badge.svg" alt="CI" /></a>
+  &nbsp;
+  <a href="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/blob/main/LICENSE"><img src="https://img.shields.io/github/license/hocestnonsatis/virtual-ohmic-logic-testbench?label=license" alt="License" /></a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/prebuilt-Linux%20%7C%20Windows%20%7C%20macOS-2ea043?logo=rocket&logoColor=white" alt="Platforms" />
+</p>
+
+<p align="center">
+  <sub>Tree version <code>0.0.1</code> · Tag a release as <code>v0.0.1</code> to publish binaries via GitHub Actions · <a href="#releases--downloads">Downloads</a></sub>
+</p>
+
 Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar arrays. VOLT models voltage-based neural inference with Ohm’s law and Kirchhoff’s current law—useful for exploring feasibility before hardware exists.
 
 **Stack:** C++17, CMake ≥ 3.14, standard library only (no third-party dependencies).
@@ -10,12 +24,13 @@ Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar ar
 
 1. [Concept](#concept) — digital operations vs. simulated analog  
 2. [Quick start](#quick-start) — build, run, tests  
-3. [Repository layout](#repository-layout)  
-4. [Design notes](#design-notes) — differential pair, bipolar ADC, read disturb, activations, endurance  
-5. [Scenarios & results](#scenarios--results)  
-6. [Defaults (`config.hpp`)](#defaults-confighpp)  
-7. [Project rules](#project-rules)  
-8. [Roadmap](#roadmap)
+3. [Releases & downloads](#releases--downloads) — prebuilt `volt`, versioning  
+4. [Repository layout](#repository-layout)  
+5. [Design notes](#design-notes) — differential pair, bipolar ADC, read disturb, activations, endurance  
+6. [Scenarios & results](#scenarios--results)  
+7. [Defaults (`config.hpp`)](#defaults-confighpp)  
+8. [Project rules](#project-rules)  
+9. [Roadmap](#roadmap)
 
 ---
 
@@ -80,10 +95,31 @@ cd build && ctest --output-on-failure
 
 ---
 
+## Releases & downloads
+
+| | |
+|:--|:--|
+| **Latest** | [![GitHub release](https://img.shields.io/github/v/release/hocestnonsatis/virtual-ohmic-logic-testbench?logo=github)](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/releases/latest) |
+| **Version file** | [`VERSION`](VERSION) (current `0.0.1`) |
+
+Pushing a git tag matching `v*.*.*` (for example `v0.0.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): **Linux** (g++, `.tar.gz`), **Windows** (MSVC, `.zip`), **macOS** (Clang, `.tar.gz`). Each archive contains the `volt` binary (`volt.exe` on Windows), `README.md`, `VERSION`, and `LICENSE`.
+
+| Platform | Asset name pattern |
+|----------|-------------------|
+| Linux x86_64 | `volt-<tag>-linux-x86_64.tar.gz` |
+| Windows x64 | `volt-<tag>-windows-x64.zip` |
+| macOS | `volt-<tag>-macos.tar.gz` |
+
+After extracting, run `./volt` from the inner folder (Linux/macOS) or `volt.exe` (Windows). CI status for every push/PR: [![CI](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml).
+
+---
+
 ## Repository layout
 
 ```
 .
+├── VERSION                 # Semver string for releases (e.g. 0.0.1)
+├── LICENSE                 # MIT
 ├── volt.example.json       # Example `--config` (subset of fields)
 ├── volt.example.weights.csv # Example `--weights` (4×4)
 ├── volt.example.inputs.csv  # Example `--inputs` (length 4)
@@ -101,6 +137,9 @@ cd build && ctest --output-on-failure
 ├── tests/
 │   ├── test_core.cpp
 │   └── test_equivalence.cpp  # Regression: MSE < 1e-6 (ideal path)
+├── .github/workflows/
+│   ├── cmake-multi-platform.yml
+│   └── release.yml         # Tag v*.*.* → Release + Linux / Windows / macOS binaries
 └── CMakeLists.txt
 ```
 

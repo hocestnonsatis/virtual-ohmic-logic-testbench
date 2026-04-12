@@ -1,0 +1,130 @@
+# Build portable archives and attach them to a GitHub Release when a version tag is pushed (e.g. v0.0.1).
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure & build (Release)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc
+          cmake --build build --parallel
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure
+
+      - name: Package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p "staging/volt-${TAG}-linux-x86_64"
+          cp build/volt README.md VERSION LICENSE "staging/volt-${TAG}-linux-x86_64/"
+          (cd staging && tar czf "../volt-${TAG}-linux-x86_64.tar.gz" "volt-${TAG}-linux-x86_64")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-linux
+          path: volt-*-linux-x86_64.tar.gz
+
+  build-windows:
+    name: Windows x64 (MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure & build (Release)
+        shell: bash
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl
+          cmake --build build --config Release --parallel
+
+      - name: Test
+        working-directory: build
+        run: ctest --build-config Release --output-on-failure
+
+      - name: Package
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $dir = "staging/volt-$env:TAG-windows-x64"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $exe = $(if (Test-Path "build/Release/volt.exe") { "build/Release/volt.exe" } else { "build/volt.exe" })
+          Copy-Item $exe, "README.md", "VERSION", "LICENSE" -Destination $dir
+          Compress-Archive -Path $dir -DestinationPath "volt-$env:TAG-windows-x64.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-windows
+          path: volt-*-windows-x64.zip
+
+  build-macos:
+    name: macOS (Clang)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure & build (Release)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
+          cmake --build build --parallel
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure
+
+      - name: Package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p "staging/volt-${TAG}-macos"
+          cp build/volt README.md VERSION LICENSE "staging/volt-${TAG}-macos/"
+          (cd staging && tar czf "../volt-${TAG}-macos.tar.gz" "volt-${TAG}-macos")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-macos
+          path: volt-*-macos.tar.gz
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release-assets/ \;
+          ls -la release-assets
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: VOLT ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
