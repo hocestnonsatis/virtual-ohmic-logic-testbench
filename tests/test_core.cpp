@@ -3,12 +3,15 @@
 #include "config.hpp"
 #include "config_json.hpp"
 #include "crossbar.hpp"
+#include "weights_csv.hpp"
 #include "dac.hpp"
 #include "noise.hpp"
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -241,6 +244,22 @@ int main() {
         volt::Config c2;
         assert_true(volt::load_config_from_json(R"({})", c2, err), "empty JSON object");
         assert_near(c2.G_max, volt::Config{}.G_max, 1e-12f, "empty JSON preserves defaults");
+    }
+
+    // --- CSV weights ---
+    {
+        const char* tmp = "volt_test_weights.csv";
+        std::ofstream f(tmp);
+        assert_true(f.good(), "temp csv open");
+        f << "# identity\n";
+        f << "1,0,0,0\n0,1,0,0\n0,0,1,0\n0,0,0,1\n";
+        f.close();
+        std::vector<std::vector<double>> W;
+        std::string err;
+        assert_true(volt::load_weights_csv_file(tmp, W, err), err.c_str());
+        std::remove(tmp);
+        assert_near(static_cast<float>(W[0][0]), 1.0f, 1e-9f, "CSV W(0,0)");
+        assert_near(static_cast<float>(W[1][1]), 1.0f, 1e-9f, "CSV W(1,1)");
     }
 
     std::cout << "test_core: all checks passed\n";

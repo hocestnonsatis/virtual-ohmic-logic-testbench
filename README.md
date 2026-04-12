@@ -58,6 +58,12 @@ cd build && ./volt --benchmark
 cd build && ./volt --config ../volt.example.json
 ```
 
+**Weight matrix CSV** (optional **4×4**; comma-separated rows; replaces the built-in demo weights for scenarios A–I):
+
+```bash
+cd build && ./volt --weights ../volt.example.weights.csv
+```
+
 Run tests:
 
 ```bash
@@ -71,9 +77,11 @@ cd build && ctest --output-on-failure
 ```
 .
 ├── volt.example.json       # Example `--config` (subset of fields)
+├── volt.example.weights.csv # Example `--weights` (4×4)
 ├── src/
 │   ├── config.hpp          # Physical constants
 │   ├── config_json.hpp / .cpp # Optional JSON overlay for physics params
+│   ├── weights_csv.hpp / .cpp # Optional `--weights` CSV import
 │   ├── dac.hpp / dac.cpp   # Digital → voltage
 │   ├── adc.hpp / adc.cpp   # Current → digital
 │   ├── crossbar.hpp / .cpp # Weight matrix (differential pair)
@@ -197,6 +205,10 @@ Pass a single JSON **object** whose keys match the table above (same names as in
 { "G_max": 1e-4, "I_min": -6.02e-5, "noise_seed": 42 }
 ```
 
+### CSV weights (`--weights`)
+
+Provide a **square 4×4** matrix (this build): one row per line, comma-separated numbers in **[-1, 1]** (values outside are clamped, with a warning). Lines starting with `#` after spaces are comments; empty lines are ignored. The default input vector is still the built-in demo; scenario **F** keeps a fixed second-layer diagonal matrix. For currents to stay in the default ADC window you may need to tune `I_min` / `I_range` via `--config` when using arbitrary pretrained weights.
+
 ---
 
 ## Project rules
@@ -216,4 +228,4 @@ Pass a single JSON **object** whose keys match the table above (same names as in
 - [x] Write endurance (e.g. `G_max` vs. write cycles) — `WriteEnduranceSimulator` in `noise.hpp` / `.cpp`, `CrossbarArray::effective_g_max()`, scenario `I_write_endurance`.
 - [x] Benchmark mode (matrix size sweeps, throughput) — `./volt --benchmark`; `benchmark.csv` (GMAC/s, forwards/s).
 - [x] JSON config at runtime (no recompile for physics params) — `./volt --config FILE`; `config_json.hpp`; `volt.example.json`.
-- [ ] CSV weight import for real pretrained weights
+- [x] CSV weight import for real pretrained weights — `./volt --weights FILE`; `weights_csv.hpp`; `volt.example.weights.csv` (4×4).

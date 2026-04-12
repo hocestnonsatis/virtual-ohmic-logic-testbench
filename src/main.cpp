@@ -6,6 +6,7 @@
 #include "crossbar.hpp"
 #include "dac.hpp"
 #include "noise.hpp"
+#include "weights_csv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -298,9 +299,22 @@ ScenarioResult run_two_layer_scenario(const std::string& name, Config cfg,
 
 }  // namespace
 
+namespace {
+
+const std::vector<std::vector<double>> k_default_W = {
+    {0.8, -0.3, 0.5, -0.1},
+    {-0.6, 0.9, -0.2, 0.7},
+    {0.1, -0.8, 0.4, -0.5},
+    {0.3, 0.2, -0.9, 0.6},
+};
+const std::vector<float> k_default_inputs = {0.9f, 0.4f, 0.7f, 0.2f};
+
+}  // namespace
+
 int main(int argc, char** argv) {
     volt::Config defaults;
     bool do_benchmark = false;
+    std::string weights_path;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--benchmark") == 0) {
             do_benchmark = true;
@@ -314,9 +328,16 @@ int main(int argc, char** argv) {
                 std::cerr << "error: " << err << '\n';
                 return 1;
             }
+        } else if (std::strcmp(argv[i], "--weights") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --weights requires a CSV file path\n";
+                return 1;
+            }
+            weights_path = argv[++i];
         } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
-            std::cout << "Usage: volt [--config FILE] [--benchmark] [--help]\n"
+            std::cout << "Usage: volt [--config FILE] [--weights FILE] [--benchmark] [--help]\n"
                          "  --config FILE   merge physics parameters from a JSON object (see README)\n"
+                         "  --weights FILE  4×4 signed weight matrix (CSV); default is built-in demo\n"
                          "  --benchmark     run matrix-size sweep; writes benchmark.csv\n";
             return 0;
         } else {
@@ -330,13 +351,15 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    const std::vector<std::vector<double>> W = {
-        {0.8, -0.3, 0.5, -0.1},
-        {-0.6, 0.9, -0.2, 0.7},
-        {0.1, -0.8, 0.4, -0.5},
-        {0.3, 0.2, -0.9, 0.6},
-    };
-    const std::vector<float> inputs = {0.9f, 0.4f, 0.7f, 0.2f};
+    std::vector<std::vector<double>> W = k_default_W;
+    if (!weights_path.empty()) {
+        std::string err;
+        if (!volt::load_weights_csv_file(weights_path, W, err)) {
+            std::cerr << "error: " << err << '\n';
+            return 1;
+        }
+    }
+    const std::vector<float>& inputs = k_default_inputs;
 
     std::vector<ScenarioResult> results;
 
