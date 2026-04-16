@@ -18,6 +18,29 @@ Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar ar
 
 **Stack:** C++17, CMake ≥ 3.14, standard library only (no third-party dependencies).
 
+**One-line positioning:** Simulate how real analog crossbar non-idealities (ADC limits, thermal noise, read disturb, write endurance) distort neural inference before hardware tape-out.
+
+### 30-second demo
+
+```bash
+cmake -S . -B build
+cmake --build build
+cd build && ./volt
+```
+
+What you get instantly:
+- Scenario-by-scenario **MSE / SNR** on stdout (A-I suite)
+- `results.csv` with all scenario metrics
+- A reproducible baseline to compare ideal digital math vs analog effects
+
+Try rectangular weights (new in v0.0.2):
+
+```bash
+cd build && ./volt --weights ../your_weights.csv --inputs ../your_inputs.csv
+```
+
+`your_weights.csv` can be **N×M** (1..512 per dimension). `your_inputs.csv` must contain **N** normalized values.
+
 ---
 
 ## Contents
