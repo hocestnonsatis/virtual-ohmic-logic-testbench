@@ -82,17 +82,18 @@ bool load_weights_csv_file(const std::string& path, std::vector<std::vector<doub
         err = "CSV: no data rows";
         return false;
     }
-    const std::size_t n = out.size();
-    if (n != out[0].size()) {
-        err = "CSV: matrix must be square";
+    const std::size_t n_rows = out.size();
+    const std::size_t n_cols = out[0].size();
+    if (n_rows > static_cast<std::size_t>(k_max_weights_rows)) {
+        err = "CSV: row count exceeds k_max_weights_rows";
         return false;
     }
-    if (n > static_cast<std::size_t>(k_max_weights_dim)) {
-        err = "CSV: matrix dimension exceeds k_max_weights_dim";
+    if (n_cols > static_cast<std::size_t>(k_max_weights_cols)) {
+        err = "CSV: column count exceeds k_max_weights_cols";
         return false;
     }
-    for (std::size_t i = 0; i < n; ++i) {
-        for (std::size_t j = 0; j < n; ++j) {
+    for (std::size_t i = 0; i < n_rows; ++i) {
+        for (std::size_t j = 0; j < n_cols; ++j) {
             double& w = out[i][j];
             if (w < -1.0 || w > 1.0) {
                 std::cerr << "[weights_csv] warning: entry (" << i << "," << j << ") = " << w

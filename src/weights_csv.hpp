@@ -5,15 +5,17 @@
 
 namespace volt {
 
-/// Reads a square weight matrix: one row per line, comma-separated numbers.
+/// Reads a weight matrix (N×M): one row per line, comma-separated numbers.
 /// Lines starting with `#` (after spaces) are comments; empty lines are skipped.
 /// Values are clamped to [-1, 1] with the same semantics as `CrossbarArray::load_weights`.
-/// Dimension must be square and in [1, k_max_weights_dim].
+/// Dimensions must satisfy 1 <= N <= k_max_weights_rows and 1 <= M <= k_max_weights_cols.
 bool load_weights_csv_file(const std::string& path, std::vector<std::vector<double>>& out,
                            std::string& err);
 
-/// Maximum supported N for an N×N weight matrix (guardrail for CLI / file mistakes).
-constexpr int k_max_weights_dim = 512;
+/// Maximum supported row count N for an N×M weight matrix.
+constexpr int k_max_weights_rows = 512;
+/// Maximum supported column count M for an N×M weight matrix.
+constexpr int k_max_weights_cols = 512;
 
 /// Reads a normalized input vector for the DAC: comma-separated and/or one value per line.
 /// Total count must equal [expected_n]. Values are clamped to [0, 1] with optional warnings.

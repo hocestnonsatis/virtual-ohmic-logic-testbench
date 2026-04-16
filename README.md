@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <sub>Tree version <code>0.0.1</code> · Tag a release as <code>v0.0.1</code> to publish binaries via GitHub Actions · <a href="#releases--downloads">Downloads</a></sub>
+  <sub>Tree version <code>0.0.2</code> · Tag a release as <code>v0.0.2</code> to publish binaries via GitHub Actions · <a href="#releases--downloads">Downloads</a></sub>
 </p>
 
 Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar arrays. VOLT models voltage-based neural inference with Ohm’s law and Kirchhoff’s current law—useful for exploring feasibility before hardware exists.
@@ -73,7 +73,7 @@ cd build && ./volt --benchmark
 cd build && ./volt --config ../volt.example.json
 ```
 
-**Weight matrix CSV** (optional square **N×N**, N ≤ 512; comma-separated rows):
+**Weight matrix CSV** (optional **N×M**, N ≤ 512 and M ≤ 512; comma-separated rows):
 
 ```bash
 cd build && ./volt --weights ../volt.example.weights.csv
@@ -85,7 +85,7 @@ cd build && ./volt --weights ../volt.example.weights.csv
 cd build && ./volt --weights ../volt.example.weights.csv --inputs ../volt.example.inputs.csv
 ```
 
-**Second layer (scenario F)** — optional **`--weights2`** N×N CSV; default is **0.5×I** so currents stay easier to bound.
+**Second layer (scenario F)** — optional **`--weights2`** matrix for layer-2; default is **0.5×I** with size **M×M** so currents stay easier to bound.
 
 Run tests:
 
@@ -100,9 +100,9 @@ cd build && ctest --output-on-failure
 | | |
 |:--|:--|
 | **Latest** | [![GitHub release](https://img.shields.io/github/v/release/hocestnonsatis/virtual-ohmic-logic-testbench?logo=github)](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/releases/latest) |
-| **Version file** | [`VERSION`](VERSION) (current `0.0.1`) |
+| **Version file** | [`VERSION`](VERSION) (current `0.0.2`) |
 
-Pushing a git tag matching `v*.*.*` (for example `v0.0.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): **Linux** (g++, `.tar.gz`), **Windows** (MSVC, `.zip`), **macOS** (Clang, `.tar.gz`). Each archive contains the `volt` binary (`volt.exe` on Windows), `README.md`, `VERSION`, and `LICENSE`.
+Pushing a git tag matching `v*.*.*` (for example `v0.0.2`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): **Linux** (g++, `.tar.gz`), **Windows** (MSVC, `.zip`), **macOS** (Clang, `.tar.gz`). Each archive contains the `volt` binary (`volt.exe` on Windows), `README.md`, `VERSION`, and `LICENSE`.
 
 | Platform | Asset name pattern |
 |----------|-------------------|
@@ -118,7 +118,7 @@ After extracting, run `./volt` from the inner folder (Linux/macOS) or `volt.exe`
 
 ```
 .
-├── VERSION                 # Semver string for releases (e.g. 0.0.1)
+├── VERSION                 # Semver string for releases (e.g. 0.0.2)
 ├── LICENSE                 # MIT
 ├── volt.example.json       # Example `--config` (subset of fields)
 ├── volt.example.weights.csv # Example `--weights` (4×4)
@@ -212,7 +212,7 @@ Reference currents use `CrossbarArray::effective_g_max()` so MSE compares to the
 
 ## Scenarios & results
 
-Nine scenarios use one **N×N** weight matrix (default **N** = 4) and an **N**-vector input. Scenario **F** uses a second **N×N** matrix (default **0.5×I**). Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`). The CSV includes **`endurance_cycles`** (0 except in **I**).
+Nine scenarios use one **N×M** weight matrix (default 4×4 demo) and an **N**-vector input. Scenario **F** uses a second matrix whose row count matches layer-1 output dimension **M** (default **0.5×I** with size **M×M**). Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`). The CSV includes **`endurance_cycles`** (0 except in **I**).
 
 | Scenario | ADC bits | Noise | Disturb cycles | Measured SNR | Theory SNR (ADC) |
 |----------|----------|-------|----------------|--------------|------------------|
@@ -255,11 +255,11 @@ Pass a single JSON **object** whose keys match the table above (same names as in
 
 ### CSV weights (`--weights`), inputs (`--inputs`), second layer (`--weights2`)
 
-**`--weights`:** square **N×N** matrix (1 ≤ N ≤ 512): one row per line, comma-separated numbers in **[-1, 1]** (values outside are clamped, with a warning). Comment lines (`#`) and empty lines follow the same rules as before.
+**`--weights`:** matrix **N×M** (1 ≤ N ≤ 512, 1 ≤ M ≤ 512): one row per line, comma-separated numbers in **[-1, 1]** (values outside are clamped, with a warning). Comment lines (`#`) and empty lines follow the same rules as before.
 
-**`--inputs`:** exactly **N** numbers for the DAC path (comma-separated and/or one value per line). Values outside **[0, 1]** are clamped with a warning.
+**`--inputs`:** exactly **N** numbers for the DAC path (where **N** is the row count of `--weights`; comma-separated and/or one value per line). Values outside **[0, 1]** are clamped with a warning.
 
-**`--weights2`:** optional second **N×N** matrix for scenario **F** only; must match **N**. If omitted, **F** uses **0.5×I** (helps keep **I_net** in range for the default ADC window).
+**`--weights2`:** optional second matrix for scenario **F** only; its row count must match the column count **M** of `--weights`. If omitted, **F** uses **0.5×I** (size **M×M**) to keep **I_net** in range for the default ADC window.
 
 Without **`--weights`**, the original 4×4 demo matrix and demo input vector are used. With **`--weights`** but without **`--inputs`**, inputs default to a ramp across **[0.15, 0.85]**. For the same numeric behavior as the classic demo while using CSV files, use **`volt.example.weights.csv`** and **`volt.example.inputs.csv`** together.
 
@@ -284,4 +284,4 @@ For arbitrary pretrained weights, tune **`I_min` / `I_range`** (and possibly **`
 - [x] Write endurance (e.g. `G_max` vs. write cycles) — `WriteEnduranceSimulator` in `noise.hpp` / `.cpp`, `CrossbarArray::effective_g_max()`, scenario `I_write_endurance`.
 - [x] Benchmark mode (matrix size sweeps, throughput) — `./volt --benchmark`; `benchmark.csv` (GMAC/s, forwards/s).
 - [x] JSON config at runtime (no recompile for physics params) — `./volt --config FILE`; `config_json.hpp`; `volt.example.json`.
-- [x] CSV weight import for real pretrained weights — `./volt --weights FILE`; optional **`--inputs`**, **`--weights2`**, N×N pipeline; `weights_csv.hpp`; `volt.example.weights.csv` / `volt.example.inputs.csv`.
+- [x] CSV weight import for real pretrained weights — `./volt --weights FILE`; optional **`--inputs`**, **`--weights2`**, N×M / multi-layer pipeline; `weights_csv.hpp`; `volt.example.weights.csv` / `volt.example.inputs.csv`.
