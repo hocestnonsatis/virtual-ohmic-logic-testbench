@@ -1,3 +1,7 @@
 {
-  "noise_seed": 42
+  "noise_seed": 42,
+  "iv_model": "linear",
+  "iv_exponent": 1.0,
+  "interlayer_circuit": "pass_through",
+  "circuit_i_threshold": 0.0
 }

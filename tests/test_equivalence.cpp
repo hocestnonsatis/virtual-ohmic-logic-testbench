@@ -3,6 +3,7 @@
 #include "crossbar.hpp"
 #include "dac.hpp"
 #include "noise.hpp"
+#include "two_layer_pipeline.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -116,6 +117,23 @@ int main() {
         if (lv < 0 || lv > adc.max_level()) {
             fail("ADC quantize out of range");
         }
+    }
+
+    const std::vector<std::vector<double>> W1 = {
+        {0.8, -0.3, 0.5, -0.1},
+        {-0.6, 0.9, -0.2, 0.7},
+        {0.1, -0.8, 0.4, -0.5},
+        {0.3, 0.2, -0.9, 0.6},
+    };
+    std::vector<std::vector<double>> W2(4, std::vector<double>(4, 0.0));
+    for (int i = 0; i < 4; ++i) {
+        W2[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] = 0.5;
+    }
+    const std::vector<float> inputs = {0.9f, 0.4f, 0.7f, 0.2f};
+    volt::TwoLayerOptions opt;
+    auto f_res = volt::run_two_layer("F_multilayer", cfg, W1, W2, inputs, opt);
+    if (!std::isfinite(f_res.mse) || f_res.mse < 0.0) {
+        fail("F_multilayer invalid MSE");
     }
 
     std::cout << "test_equivalence: all checks passed\n";

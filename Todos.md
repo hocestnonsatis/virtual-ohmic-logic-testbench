@@ -275,9 +275,17 @@ Models the RRAM filament drift caused by repeated read operations.
 ---
 
 ## Phase 5: Optional Future Extensions
-- [ ] **Multi-layer chaining:** Feed the ADC output of one `CrossbarArray` as the DAC
+- [x] **Multi-layer chaining:** Feed the ADC output of one `CrossbarArray` as the DAC
       input of the next. Simulate a two-layer MLP end-to-end.
-- [ ] **Analog activation functions:** Model ReLU or sigmoid as a nonlinear I-V curve
+- [x] **Robust 2-layer pipeline:** `two_layer_pipeline.hpp` — M×K `--weights2`, quantized
+      reference path, inter-layer circuit, noise/disturb/endurance on both layers.
+- [x] **Nonlinear crosspoint I-V:** `iv_model.hpp` — power-law and soft-saturation models
+      inside `CrossbarArray::apply_voltage` (scenario J).
+- [x] **Inter-layer activation circuit:** `activation_circuit.hpp` — diode rectifier and
+      tunable sigmoid between layers (scenarios F_relu, K).
+- [x] **Python bindings (optional):** pybind11 module `volt`; `BUILD_PYTHON_BINDINGS` CMake
+      option; `python/smoke_test.py`.
+- [x] **Analog activation functions:** Model ReLU or sigmoid as a nonlinear I-V curve
       applied between layers.
 - [ ] **Write endurance degradation:** Track how many write cycles each cell has undergone
       and progressively degrade its G_max accordingly.
@@ -295,4 +303,5 @@ Models the RRAM filament drift caused by repeated read operations.
 > All voltage values must be clamped to [V_min, V_max] before being applied to the array.
 > All simulation arithmetic uses float32. double is reserved for reference calculations only.
 > All noise seeds are fixed constants in test files. Non-deterministic tests are not allowed.
-> No external libraries. Only the C++17 standard library is permitted.
+> No external libraries for the C++ core. Only the C++17 standard library is required.
+> Optional Python bindings may use pybind11 (fetched by CMake when `BUILD_PYTHON_BINDINGS=ON`).

@@ -1,11 +1,14 @@
 #include "activation.hpp"
+#include "activation_circuit.hpp"
 #include "adc.hpp"
 #include "benchmark.hpp"
 #include "config_json.hpp"
 #include "config.hpp"
 #include "crossbar.hpp"
 #include "dac.hpp"
+#include "iv_model.hpp"
 #include "noise.hpp"
+#include "two_layer_pipeline.hpp"
 #include "weights_csv.hpp"
 
 #include <algorithm>
@@ -38,10 +41,10 @@ struct ScenarioResult {
     int endurance_cycles;
     double mse;
     double max_abs_err;
-    /// Measured: mean(I_ref²) / MSE (reconstruction vs reference current).
     double snr_db;
-    /// Classical ADC SQNR for full-scale sine vs uniform Δ²/12 (depends only on I_range, n_bits).
     double snr_adc_theory_db;
+    std::string iv_model;
+    std::string interlayer_circuit;
 };
 
 std::vector<double> reference_currents(const std::vector<float>& voltages,
@@ -230,124 +233,24 @@ ScenarioResult run_scenario(const std::string& name, Config cfg, int disturb_cyc
     r.max_abs_err = max_abs;
     r.snr_db = snr_db;
     r.snr_adc_theory_db = snr_adc_theory_db;
+    r.iv_model = iv_model_name(cfg.iv_model);
+    r.interlayer_circuit = circuit_model_name(cfg.interlayer_circuit);
     return r;
 }
 
-/// Two layers: layer-1 currents are quantized by the ADC; codes map to [0,1] and drive the
-/// second-layer DAC. Reference uses continuous (I₁ − I_min) / I_range → DAC (no L1 quant).
-ScenarioResult run_two_layer_scenario(const std::string& name, Config cfg,
-                                      const std::vector<std::vector<double>>& W1,
-                                      const std::vector<std::vector<double>>& W2,
-                                      const std::vector<float>& digital_inputs) {
-    const int in_dim = static_cast<int>(W1.size());
-    if (in_dim < 1 || W1[0].empty()) {
-        throw std::invalid_argument("run_two_layer_scenario: W1 must be non-empty");
-    }
-    const int hidden_dim = static_cast<int>(W1[0].size());
-    for (int i = 0; i < in_dim; ++i) {
-        if (static_cast<int>(W1[static_cast<std::size_t>(i)].size()) != hidden_dim) {
-            throw std::invalid_argument("run_two_layer_scenario: W1 is ragged");
-        }
-    }
-    if (static_cast<int>(W2.size()) != hidden_dim || W2[0].empty()) {
-        throw std::invalid_argument("run_two_layer_scenario: W2 row count must match W1 cols");
-    }
-    const int out_dim = static_cast<int>(W2[0].size());
-    for (int i = 0; i < hidden_dim; ++i) {
-        if (static_cast<int>(W2[static_cast<std::size_t>(i)].size()) != out_dim) {
-            throw std::invalid_argument("run_two_layer_scenario: W2 is ragged");
-        }
-    }
-    if (static_cast<int>(digital_inputs.size()) != in_dim) {
-        throw std::invalid_argument("run_two_layer_scenario: input length must equal W1 rows");
-    }
-    SimulatedDAC dac(cfg);
-    CrossbarArray crossbar1(in_dim, hidden_dim, cfg);
-    CrossbarArray crossbar2(hidden_dim, out_dim, cfg);
-    SimulatedADC adc(cfg);
-
-    std::vector<std::vector<float>> Wf1(static_cast<std::size_t>(in_dim),
-                                        std::vector<float>(static_cast<std::size_t>(hidden_dim)));
-    std::vector<std::vector<float>> Wf2(static_cast<std::size_t>(hidden_dim),
-                                        std::vector<float>(static_cast<std::size_t>(out_dim)));
-    for (int i = 0; i < in_dim; ++i) {
-        for (int j = 0; j < hidden_dim; ++j) {
-            Wf1[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
-                static_cast<float>(W1[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]);
-        }
-    }
-    for (int i = 0; i < hidden_dim; ++i) {
-        for (int j = 0; j < out_dim; ++j) {
-            Wf2[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
-                static_cast<float>(W2[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]);
-        }
-    }
-    crossbar1.load_weights(Wf1);
-    crossbar2.load_weights(Wf2);
-
-    std::vector<float> voltages1 = dac.convert(digital_inputs);
-    std::vector<float> currents1 = crossbar1.apply_voltage(voltages1);
-
-    std::vector<float> dac_inputs_l2(static_cast<std::size_t>(hidden_dim));
-    for (int j = 0; j < hidden_dim; ++j) {
-        const int lv = adc.quantize(currents1[static_cast<std::size_t>(j)]);
-        dac_inputs_l2[static_cast<std::size_t>(j)] = adc.level_to_dac_normalized(lv);
-    }
-    std::vector<float> voltages2 = dac.convert(dac_inputs_l2);
-    std::vector<float> currents2 = crossbar2.apply_voltage(voltages2);
-
-    std::vector<double> I1_ref =
-        reference_currents(voltages1, W1, static_cast<double>(crossbar1.effective_g_max()));
-    std::vector<float> norms_ideal(static_cast<std::size_t>(hidden_dim));
-    for (int j = 0; j < hidden_dim; ++j) {
-        double t = (I1_ref[static_cast<std::size_t>(j)] - static_cast<double>(cfg.I_min)) /
-                   static_cast<double>(cfg.I_range);
-        t = std::clamp(t, 0.0, 1.0);
-        norms_ideal[static_cast<std::size_t>(j)] = static_cast<float>(t);
-    }
-    std::vector<float> voltages2_ref = dac.convert(norms_ideal);
-    std::vector<double> I2_ref = reference_currents(
-        voltages2_ref, W2, static_cast<double>(crossbar2.effective_g_max()));
-
-    double mse = 0.0;
-    double max_abs = 0.0;
-    double mean_ref_sq = 0.0;
-    for (int j = 0; j < out_dim; ++j) {
-        const int level = adc.quantize(currents2[static_cast<std::size_t>(j)]);
-        const float recon = adc.reconstruct(level);
-        const double ref = I2_ref[static_cast<std::size_t>(j)];
-        const double err = static_cast<double>(recon) - ref;
-        mse += err * err;
-        max_abs = std::max(max_abs, std::abs(err));
-        mean_ref_sq += ref * ref;
-    }
-    mse /= static_cast<double>(out_dim);
-    mean_ref_sq /= static_cast<double>(out_dim);
-
-    double snr_db = 0.0;
-    if (mse > 1e-30) {
-        snr_db = 10.0 * std::log10(mean_ref_sq / mse);
-    } else {
-        snr_db = 200.0;
-    }
-
-    const double Ps =
-        static_cast<double>(cfg.I_range) * static_cast<double>(cfg.I_range) / 8.0;
-    const double delta =
-        static_cast<double>(cfg.I_range) / static_cast<double>(adc.max_level());
-    const double Pq = delta * delta / 12.0;
-    const double snr_adc_theory_db = 10.0 * std::log10(Ps / Pq);
-
+ScenarioResult from_two_layer(const volt::TwoLayerResult& t, const Config& cfg) {
     ScenarioResult r;
-    r.name = name;
-    r.n_bits = cfg.n_bits_adc;
-    r.noise_stddev = cfg.noise_stddev;
-    r.disturb_cycles = 0;
-    r.endurance_cycles = 0;
-    r.mse = mse;
-    r.max_abs_err = max_abs;
-    r.snr_db = snr_db;
-    r.snr_adc_theory_db = snr_adc_theory_db;
+    r.name = t.name;
+    r.n_bits = t.n_bits;
+    r.noise_stddev = t.noise_stddev;
+    r.disturb_cycles = t.disturb_cycles;
+    r.endurance_cycles = t.endurance_cycles;
+    r.mse = t.mse;
+    r.max_abs_err = t.max_abs_err;
+    r.snr_db = t.snr_db;
+    r.snr_adc_theory_db = t.snr_adc_theory_db;
+    r.iv_model = iv_model_name(cfg.iv_model);
+    r.interlayer_circuit = circuit_model_name(cfg.interlayer_circuit);
     return r;
 }
 
@@ -428,8 +331,7 @@ int main(int argc, char** argv) {
                          "FILE] [--benchmark] [--help]\n"
                          "  --config FILE    merge physics parameters from a JSON object (see README)\n"
                          "  --weights FILE   N×M signed weight matrix (CSV); default is built-in 4×4 demo\n"
-                         "  --weights2 FILE  second-layer matrix for scenario F (optional; default "
-                         "0.5×I with size M×M)\n"
+                         "  --weights2 FILE  second-layer M×K matrix for scenarios F/F_relu/K (rows = M)\n"
                          "  --inputs FILE    N DAC inputs in [0,1] (CSV); required size matches weight rows\n"
                          "  --benchmark      run matrix-size sweep; writes benchmark.csv\n";
             return 0;
@@ -462,9 +364,9 @@ int main(int argc, char** argv) {
             std::cerr << "error: " << err << '\n';
             return 1;
         }
-        if (static_cast<int>(W2.size()) != n_cols || static_cast<int>(W2[0].size()) != n_cols) {
-            std::cerr << "error: --weights2 must be " << n_cols << "×" << n_cols
-                      << " for scenario F with current --weights\n";
+        if (static_cast<int>(W2.size()) != n_cols) {
+            std::cerr << "error: --weights2 must have " << n_cols
+                      << " rows (matching column count of --weights)\n";
             return 1;
         }
     }
@@ -510,7 +412,16 @@ int main(int argc, char** argv) {
     }
     {
         Config cfg = defaults;
-        results.push_back(run_two_layer_scenario("F_multilayer", cfg, W, W2, inputs));
+        volt::TwoLayerOptions opt;
+        results.push_back(from_two_layer(
+            volt::run_two_layer("F_multilayer", cfg, W, W2, inputs, opt), cfg));
+    }
+    {
+        Config cfg = defaults;
+        volt::TwoLayerOptions opt;
+        opt.interlayer_circuit = volt::CircuitModel::DiodeRectifier;
+        results.push_back(from_two_layer(
+            volt::run_two_layer("F_multilayer_relu", cfg, W, W2, inputs, opt), cfg));
     }
     {
         Config cfg = defaults;
@@ -527,6 +438,21 @@ int main(int argc, char** argv) {
         cfg.write_endurance_lambda = 1e-5f;
         results.push_back(run_scenario("I_write_endurance", cfg, 0, W, inputs, false, false, false,
                                        Activation::Identity, 80000));
+    }
+    {
+        Config cfg = defaults;
+        cfg.iv_model = volt::IvModel::PowerLaw;
+        cfg.iv_exponent = 1.5f;
+        results.push_back(run_scenario("J_nonlinear_iv", cfg, 0, W, inputs, false, false, false));
+    }
+    {
+        Config cfg = defaults;
+        cfg.iv_model = volt::IvModel::SoftSaturation;
+        cfg.interlayer_circuit = volt::CircuitModel::TunableSigmoid;
+        volt::TwoLayerOptions opt;
+        opt.interlayer_circuit = volt::CircuitModel::TunableSigmoid;
+        results.push_back(from_two_layer(
+            volt::run_two_layer("K_interlayer_circuit", cfg, W, W2, inputs, opt), cfg));
     }
 
     std::cout << std::fixed << std::setprecision(8);
@@ -545,13 +471,14 @@ int main(int argc, char** argv) {
     }
 
     std::ofstream csv("results.csv");
-    csv << "scenario,n_bits,noise_stddev,disturb_cycles,endurance_cycles,mse,max_abs_err,snr_"
-           "measured_db,snr_adc_theory_db\n";
+    csv << "scenario,n_bits,noise_stddev,disturb_cycles,endurance_cycles,iv_model,interlayer_"
+           "circuit,mse,max_abs_err,snr_measured_db,snr_adc_theory_db\n";
     csv << std::fixed << std::setprecision(12);
     for (const auto& r : results) {
         csv << r.name << ',' << r.n_bits << ',' << r.noise_stddev << ',' << r.disturb_cycles << ','
-            << r.endurance_cycles << ',' << r.mse << ',' << r.max_abs_err << ',' << r.snr_db << ','
-            << r.snr_adc_theory_db << '\n';
+            << r.endurance_cycles << ',' << r.iv_model << ',' << r.interlayer_circuit << ','
+            << r.mse << ',' << r.max_abs_err << ',' << r.snr_db << ',' << r.snr_adc_theory_db
+            << '\n';
     }
 
     {

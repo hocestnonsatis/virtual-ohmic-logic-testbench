@@ -2,6 +2,9 @@
 
 namespace volt {
 
+enum class IvModel { Linear, PowerLaw, SoftSaturation };
+enum class CircuitModel { PassThrough, DiodeRectifier, TunableSigmoid };
+
 struct Config {
     float G_min = 1e-6f;           // Siemens
     float G_max = 1e-4f;           // Siemens
@@ -22,6 +25,15 @@ struct Config {
     float activation_sigmoid_steepness = 6.0f;
     /// Per programmed cell: conductances scale as exp(-lambda × write_cycles). 0 = no decay in API.
     float write_endurance_lambda = 0.0f;
+    /// Crosspoint I-V model (default Linear preserves Ohm's law).
+    IvModel iv_model = IvModel::Linear;
+    float iv_exponent = 1.0f;
+    float iv_v_ref = 1.0f;
+    float iv_v_sat = 1.5f;
+    /// Inter-layer activation circuit (between layer-1 MAC and layer-2 DAC).
+    CircuitModel interlayer_circuit = CircuitModel::PassThrough;
+    float circuit_i_threshold = 0.0f;
+    float circuit_steepness = 6.0f;
 };
 
 }  // namespace volt

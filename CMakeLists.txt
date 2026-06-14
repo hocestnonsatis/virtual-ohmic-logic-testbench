@@ -17,6 +17,9 @@ set(VOLT_SOURCES
     src/crossbar.cpp
     src/noise.cpp
     src/activation.cpp
+    src/activation_circuit.cpp
+    src/iv_model.cpp
+    src/two_layer_pipeline.cpp
     src/benchmark.cpp
     src/config_json.cpp
     src/weights_csv.cpp
@@ -43,3 +46,28 @@ set_tests_properties(volt_config PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR
 
 add_test(NAME volt_weights COMMAND $<TARGET_FILE:volt> --weights ${CMAKE_SOURCE_DIR}/volt.example.weights.csv --inputs ${CMAKE_SOURCE_DIR}/volt.example.inputs.csv)
 set_tests_properties(volt_weights PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+option(BUILD_PYTHON_BINDINGS "Build pybind11 volt Python module" OFF)
+
+if(BUILD_PYTHON_BINDINGS)
+  include(FetchContent)
+  FetchContent_Declare(
+    pybind11
+    GIT_REPOSITORY https://github.com/pybind/pybind11.git
+    GIT_TAG v2.13.6
+  )
+  FetchContent_MakeAvailable(pybind11)
+
+  pybind11_add_module(volt_py bindings/volt_module.cpp)
+  target_link_libraries(volt_py PRIVATE pybind11::module)
+  target_sources(volt_py PRIVATE ${VOLT_SOURCES})
+  target_include_directories(volt_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  set_target_properties(volt_py PROPERTIES OUTPUT_NAME volt)
+
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME volt_py_import
+           COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/python/smoke_test.py)
+  set_tests_properties(volt_py_import PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_BINARY_DIR}"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()

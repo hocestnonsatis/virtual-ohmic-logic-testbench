@@ -1,5 +1,8 @@
 #include "config_json.hpp"
 
+#include "activation_circuit.hpp"
+#include "iv_model.hpp"
+
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -52,7 +55,7 @@ bool parse_number(std::string_view s, std::size_t& i, double& out) {
     return true;
 }
 
-void apply_key(std::string_view key, double v, Config& c) {
+void apply_numeric_key(std::string_view key, double v, Config& c) {
     if (key == "G_min") {
         c.G_min = static_cast<float>(v);
     } else if (key == "G_max") {
@@ -79,7 +82,52 @@ void apply_key(std::string_view key, double v, Config& c) {
         c.activation_sigmoid_steepness = static_cast<float>(v);
     } else if (key == "write_endurance_lambda") {
         c.write_endurance_lambda = static_cast<float>(v);
+    } else if (key == "iv_exponent") {
+        c.iv_exponent = static_cast<float>(v);
+    } else if (key == "iv_v_ref") {
+        c.iv_v_ref = static_cast<float>(v);
+    } else if (key == "iv_v_sat") {
+        c.iv_v_sat = static_cast<float>(v);
+    } else if (key == "circuit_i_threshold") {
+        c.circuit_i_threshold = static_cast<float>(v);
+    } else if (key == "circuit_steepness") {
+        c.circuit_steepness = static_cast<float>(v);
     }
+}
+
+void apply_string_key(std::string_view key, std::string_view value, Config& c) {
+    if (key == "iv_model") {
+        IvModel m;
+        if (parse_iv_model(value, m)) {
+            c.iv_model = m;
+        }
+    } else if (key == "interlayer_circuit") {
+        CircuitModel m;
+        if (parse_circuit_model(value, m)) {
+            c.interlayer_circuit = m;
+        }
+    }
+}
+
+bool parse_value(std::string_view s, std::size_t& i, Config& c, std::string_view key,
+                 std::string& err) {
+    skip_ws(s, i);
+    if (i < s.size() && s[i] == '"') {
+        std::string str;
+        if (!parse_string(s, i, str)) {
+            err = "JSON: expected string value";
+            return false;
+        }
+        apply_string_key(key, str, c);
+        return true;
+    }
+    double num = 0.0;
+    if (!parse_number(s, i, num)) {
+        err = "JSON: expected number or string for key \"" + std::string(key) + "\"";
+        return false;
+    }
+    apply_numeric_key(key, num, c);
+    return true;
 }
 
 bool parse_object(std::string_view s, std::size_t& i, Config& c, std::string& err) {
@@ -106,12 +154,9 @@ bool parse_object(std::string_view s, std::size_t& i, Config& c, std::string& er
             return false;
         }
         ++i;
-        double num = 0.0;
-        if (!parse_number(s, i, num)) {
-            err = "JSON: expected number for key \"" + key + "\"";
+        if (!parse_value(s, i, c, key, err)) {
             return false;
         }
-        apply_key(key, num, c);
         skip_ws(s, i);
         if (i < s.size() && s[i] == ',') {
             ++i;

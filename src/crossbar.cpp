@@ -1,5 +1,7 @@
 #include "crossbar.hpp"
 
+#include "iv_model.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -64,10 +66,12 @@ std::vector<float> CrossbarArray::apply_voltage(const std::vector<float>& voltag
     for (int j = 0; j < cols_; ++j) {
         for (int i = 0; i < rows_; ++i) {
             float v = v_row[static_cast<std::size_t>(i)];
-            I_pos[static_cast<std::size_t>(j)] +=
-                v * G_pos_[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
-            I_neg[static_cast<std::size_t>(j)] +=
-                v * G_neg_[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+            I_pos[static_cast<std::size_t>(j)] += cell_current(
+                v, G_pos_[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)],
+                cfg_.iv_model, cfg_);
+            I_neg[static_cast<std::size_t>(j)] += cell_current(
+                v, G_neg_[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)],
+                cfg_.iv_model, cfg_);
         }
     }
     std::vector<float> I_net(static_cast<std::size_t>(cols_));
@@ -104,10 +108,12 @@ std::vector<float> CrossbarArray::apply_voltage(
     for (int j = 0; j < cols_; ++j) {
         for (int i = 0; i < rows_; ++i) {
             float v = v_row[static_cast<std::size_t>(i)];
-            I_pos[static_cast<std::size_t>(j)] +=
-                v * G_pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
-            I_neg[static_cast<std::size_t>(j)] +=
-                v * G_neg[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+            I_pos[static_cast<std::size_t>(j)] += cell_current(
+                v, G_pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)],
+                cfg_.iv_model, cfg_);
+            I_neg[static_cast<std::size_t>(j)] += cell_current(
+                v, G_neg[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)],
+                cfg_.iv_model, cfg_);
         }
     }
     std::vector<float> I_net(static_cast<std::size_t>(cols_));

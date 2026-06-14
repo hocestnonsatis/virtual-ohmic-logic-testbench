@@ -23,14 +23,15 @@ Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar ar
 ## Contents
 
 1. [Concept](#concept) — digital operations vs. simulated analog  
-2. [Quick start](#quick-start) — build, run, tests  
-3. [Releases & downloads](#releases--downloads) — prebuilt `volt`, versioning  
-4. [Repository layout](#repository-layout)  
-5. [Design notes](#design-notes) — differential pair, bipolar ADC, read disturb, activations, endurance  
-6. [Scenarios & results](#scenarios--results)  
-7. [Defaults (`config.hpp`)](#defaults-confighpp)  
-8. [Project rules](#project-rules)  
-9. [Roadmap](#roadmap)
+2. [How the crossbar works](#how-the-crossbar-works) — pipeline + physical layout (ASCII & Mermaid)  
+3. [Quick start](#quick-start) — build, run, tests  
+4. [Releases & downloads](#releases--downloads) — prebuilt `volt`, versioning  
+5. [Repository layout](#repository-layout)  
+6. [Design notes](#design-notes) — differential pair, bipolar ADC, read disturb, activations, endurance  
+7. [Scenarios & results](#scenarios--results)  
+8. [Defaults (`config.hpp`)](#defaults-confighpp)  
+9. [Project rules](#project-rules)  
+10. [Roadmap](#roadmap)
 
 ---
 
@@ -43,6 +44,218 @@ Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar ar
 | Multiply | Ohm’s law | `I = V × G` |
 | Dot product | Kirchhoff (current sum) | `I_total = Σ (Vᵢ × Gᵢ)` |
 | Output | ADC | `level = floor((I − I_min) / I_step)` |
+
+---
+
+## How the crossbar works
+
+VOLT simulates one **matrix–vector multiply** (MAC) per forward pass. Digital inputs become row voltages; each crosspoint is a pair of non-negative conductances; column bitlines sum currents (Kirchhoff); the ADC turns each column current into a digital code.
+
+### End-to-end pipeline
+
+```mermaid
+flowchart TD
+    x["inputs x ∈ [0, 1]^N"]
+    dac["DAC<br/>Vᵢ = V_min + xᵢ × (V_max − V_min)"]
+    xb["Crossbar N×M<br/>each wᵢⱼ → G⁺ᵢⱼ, G⁻ᵢⱼ<br/>I_net[j] = Σᵢ Vᵢ(G⁺ᵢⱼ − G⁻ᵢⱼ)"]
+    act{"activation?"}
+    relu["ReLU / sigmoid"]
+    adc["ADC<br/>levelⱼ ∈ {0 … 2^n_bits − 1}"]
+
+    x --> dac --> xb --> act
+    act -->|yes| relu --> adc
+    act -->|no| adc
+```
+
+<details>
+<summary>ASCII version (plain-text / copy-paste)</summary>
+
+```
+  inputs x[0…N−1]  in [0, 1]
+         │
+         ▼
+    ┌─────────┐
+    │   DAC   │   V_i = V_min + x_i × (V_max − V_min)
+    └────┬────┘
+         │  wordline voltages  V_0 … V_{N−1}
+         ▼
+    ┌──────────────────────────────────────────┐
+    │  CROSSBAR  N rows × M cols               │
+    │  weight w[i][j] → two cells: G⁺, G⁻      │
+    │  column j: sum currents on bitline j     │
+    └────────────────────┬─────────────────────┘
+                         │  I_net[j] = Σ_i V_i × (G⁺ᵢⱼ − G⁻ᵢⱼ)
+                         ▼
+              (optional ReLU / sigmoid on I_net)
+                         │
+                         ▼
+    ┌─────────┐
+    │   ADC   │   level_j ∈ {0 … 2^n_bits − 1}
+    └─────────┘
+```
+
+</details>
+
+This is the linear layer `y = W × x` in analog form: each output column `j` is one dot product `Σᵢ w[i][j] × x[i]`, with `x` encoded as voltage and `w` encoded as conductance difference.
+
+### Physical layout (4×4 example)
+
+Rows are **wordlines** (one applied voltage per input). Columns are **bitlines** (one summed current per output). Every matrix entry uses **two** RRAM cells so signed weights stay physical (`G ≥ 0`):
+
+```mermaid
+flowchart LR
+    subgraph WL["Wordlines — inputs"]
+        direction TB
+        v0["V₀"]
+        v1["V₁"]
+        v2["V₂"]
+        v3["V₃"]
+    end
+
+    subgraph XB["Crossbar 4×4"]
+        direction TB
+        c0["col 0<br/>4 × (G⁺ G⁻)"]
+        c1["col 1<br/>4 × (G⁺ G⁻)"]
+        c2["col 2<br/>4 × (G⁺ G⁻)"]
+        c3["col 3<br/>4 × (G⁺ G⁻)"]
+    end
+
+    subgraph BL["Bitlines — outputs"]
+        direction TB
+        i0["I₀"]
+        i1["I₁"]
+        i2["I₂"]
+        i3["I₃"]
+    end
+
+    v0 --> c0 & c1 & c2 & c3
+    v1 --> c0 & c1 & c2 & c3
+    v2 --> c0 & c1 & c2 & c3
+    v3 --> c0 & c1 & c2 & c3
+    c0 --> i0
+    c1 --> i1
+    c2 --> i2
+    c3 --> i3
+```
+
+Each bitline sums Ohmic currents from every row in that column:
+
+`I_j = Σᵢ Vᵢ × G⁺ᵢⱼ − Σᵢ Vᵢ × G⁻ᵢⱼ = Σᵢ Vᵢ × w[i][j] × G_max`
+
+<details>
+<summary>ASCII grid (plain-text / copy-paste)</summary>
+
+```
+  bitlines (outputs)  →  I_0    I_1    I_2    I_3
+                        │      │      │      │
+         col0      col1      col2      col3
+      ┌───────┬───────┬───────┬───────┐
+  V_0 │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │  wordline 0
+      ├───────┼───────┼───────┼───────┤
+  V_1 │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │  wordline 1
+      ├───────┼───────┼───────┼───────┤
+  V_2 │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │  wordline 2
+      ├───────┼───────┼───────┼───────┤
+  V_3 │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │ G⁺ G⁻ │  wordline 3
+      └───────┴───────┴───────┴───────┘
+
+  I_j = Σ_i  V_i × G⁺ᵢⱼ  −  Σ_i  V_i × G⁻ᵢⱼ     (Kirchhoff on bitline j)
+      = Σ_i  V_i × w[i][j] × G_max                 (differential pair)
+```
+
+</details>
+
+### One crosspoint (differential pair)
+
+A single signed weight `w ∈ [-1, 1]` at row `i`, column `j`:
+
+```mermaid
+flowchart LR
+    V["wordline i<br/>voltage Vᵢ"]
+    Gp["G_pos<br/>(w + 1)/2 × G_max"]
+    Gn["G_neg<br/>(1 − w)/2 × G_max"]
+    net["net on bitline j<br/>Vᵢ × (G_pos − G_neg)<br/>= Vᵢ × w × G_max"]
+
+    V --> Gp --> net
+    V --> Gn --> net
+```
+
+<details>
+<summary>ASCII version (plain-text / copy-paste)</summary>
+
+```
+  wordline i  ─── V_i ───┬──[ G_pos ]──┐
+                         │              ├──► bitline j
+                         └──[ G_neg ]──┘
+
+  G_pos = (w + 1) / 2 × G_max
+  G_neg = (1 − w) / 2 × G_max
+
+  contribution to I_j  =  V_i × (G_pos − G_neg)  =  V_i × w × G_max
+```
+
+</details>
+
+`w = +1` → only `G_pos` is full scale; `w = −1` → only `G_neg`; `w = 0` → equal pair, zero net current at that crosspoint.
+
+### Multi-layer (scenario F)
+
+Layer 1 ADC codes are mapped back to `[0, 1]` and fed into layer 2’s DAC — same crossbar physics, chained:
+
+```mermaid
+flowchart LR
+    x["x"]
+    dac1["DAC"]
+    cb1["Crossbar₁<br/>N × M"]
+    adc1["ADC"]
+    norm["normalize<br/>level → [0, 1]"]
+    dac2["DAC"]
+    cb2["Crossbar₂<br/>M × K"]
+    adc2["ADC"]
+    y["y"]
+
+    x --> dac1 --> cb1 --> adc1 --> norm --> dac2 --> cb2 --> adc2 --> y
+```
+
+Default demo: `N = M = K = 4`. With `--weights` / `--weights2`, dimensions follow your CSV matrices.
+
+<details>
+<summary>ASCII version (plain-text / copy-paste)</summary>
+
+```
+  x ──► DAC ──► Crossbar₁ (N×M) ──► ADC ──► normalize ──► DAC ──► Crossbar₂ (M×K) ──► ADC ──► y
+```
+
+</details>
+
+### What happens inside `apply_voltage`
+
+For each column `j`, VOLT walks all rows and accumulates:
+
+```mermaid
+flowchart TD
+    start(["apply_voltage(V)"])
+    loop["for each column j"]
+    acc["I_pos[j] = 0, I_neg[j] = 0"]
+    inner["for each row i:<br/>I_pos[j] += Vᵢ × G_pos[i][j]<br/>I_neg[j] += Vᵢ × G_neg[i][j]"]
+    net["I_net[j] = I_pos[j] − I_neg[j]"]
+    out(["return I_net[0…M−1]"])
+
+    start --> loop --> acc --> inner --> net --> out
+```
+
+<details>
+<summary>ASCII / pseudocode (plain-text / copy-paste)</summary>
+
+```
+I_pos[j] += V_i × G_pos[i][j]
+I_neg[j] += V_i × G_neg[i][j]
+I_net[j]  = I_pos[j] − I_neg[j]
+```
+
+</details>
+
+Optional physics (scenarios C–E, I) can alter `G_pos` / `G_neg` before or during this step: thermal noise, read disturb on neighbor rows, write-endurance scaling. The math above is unchanged — only the conductances drift.
 
 ---
 
@@ -132,6 +345,9 @@ After extracting, run `./volt` from the inner folder (Linux/macOS) or `volt.exe`
 │   ├── crossbar.hpp / .cpp # Weight matrix (differential pair)
 │   ├── noise.hpp / .cpp    # Thermal noise, read disturb, write endurance
 │   ├── activation.hpp / .cpp # ReLU / sigmoid on I_net (optional)
+│   ├── activation_circuit.hpp / .cpp # Physical inter-layer I-V circuit
+│   ├── iv_model.hpp / .cpp   # Nonlinear crosspoint I = G × f(V)
+│   ├── two_layer_pipeline.hpp / .cpp # 2-layer ADC→DAC chain
 │   ├── benchmark.hpp / .cpp  # Optional `--benchmark` sweep
 │   └── main.cpp            # Pipeline + scenarios A–I
 ├── tests/
@@ -204,6 +420,30 @@ G_max effective ← G_max × s
 
 Reference currents use `CrossbarArray::effective_g_max()` so MSE compares to the same weakened linear model. Read disturb and thermal noise clamps use the current effective ceiling.
 
+### Nonlinear crosspoint I-V (optional)
+
+Each cell can depart from Ohm's law via `iv_model` in `config.hpp`:
+
+| Model | Formula |
+|-------|---------|
+| `linear` | `I = G × V` (default) |
+| `power_law` | `I = G × sign(V) × \|V / V_ref\|^α × V_ref` |
+| `soft_saturation` | `I = G × V / (1 + \|V\| / V_sat)` |
+
+Set via `--config` JSON (`"iv_model": "power_law"`, `"iv_exponent": 1.5`) or `Config::iv_model` in code. Scenario **J** demonstrates power-law.
+
+### Inter-layer activation circuit (optional)
+
+Between layer-1 MAC and layer-2 DAC, a physical current transfer models analog activation:
+
+| Circuit | Behavior |
+|---------|----------|
+| `pass_through` | identity |
+| `diode_rectifier` | `I_out = max(0, I_in − I_th)` |
+| `tunable_sigmoid` | smooth saturation in `[I_min, I_min + I_range]` |
+
+Configured with `interlayer_circuit`, `circuit_i_threshold`, `circuit_steepness`. Scenarios **F_relu** and **K** use diode rectifier and tunable sigmoid respectively. Algebraic post-MAC activation (`activation.hpp`, scenarios G/H) remains for single-layer comparison.
+
 ### Benchmark mode
 
 `./volt --benchmark` times steady-state `CrossbarArray::apply_voltage` for n × n arrays with deterministic weights and DAC inputs. Each sweep step runs for about 40 ms wall time; **GMAC/s** uses n² MACs per forward (one multiply per matrix entry contributing to each output column). Output: `benchmark.csv` plus a short human-readable summary on stdout.
@@ -212,21 +452,24 @@ Reference currents use `CrossbarArray::effective_g_max()` so MSE compares to the
 
 ## Scenarios & results
 
-Nine scenarios use one **N×M** weight matrix (default 4×4 demo) and an **N**-vector input. Scenario **F** uses a second matrix whose row count matches layer-1 output dimension **M** (default **0.5×I** with size **M×M**). Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`). The CSV includes **`endurance_cycles`** (0 except in **I**).
+Eleven scenarios use one **N×M** weight matrix (default 4×4 demo) and an **N**-vector input. Two-layer scenarios (**F**, **F_relu**, **K**) use a second matrix **M×K** (rows = layer-1 columns). Output is **`results.csv`** in the working directory when you run `./volt` (typically `build/results.csv`). The CSV includes **`iv_model`**, **`interlayer_circuit`**, and **`endurance_cycles`** (0 except in **I**).
 
-| Scenario | ADC bits | Noise | Disturb cycles | Measured SNR | Theory SNR (ADC) |
-|----------|----------|-------|----------------|--------------|------------------|
-| A — Ideal | 8 | none | 0 | ~44.2 dB | ~49.9 dB |
-| B — Low ADC | 4 | none | 0 | ~21.6 dB | ~25.3 dB |
-| C — Thermal | 8 | 0.5% G_max | 0 | ~37.6 dB | — |
-| D — Read disturb | 8 | none | 1000 | lower (see CSV) | ~49.9 dB |
-| E — Combined | 4 | 0.5% G_max | 1000 | worst in suite (see CSV) | ~25.3 dB |
-| F — Multi-layer | 8 | none | 0 | lower than A (L1+L2 ADC; see CSV) | ~49.9 dB |
-| G — ReLU | 8 | none | 0 | see CSV | ~49.9 dB |
-| H — Sigmoid | 8 | none | 0 | see CSV | ~49.9 dB |
-| I — Write endurance | 8 | none | 0 | lower than A (see CSV) | ~49.9 dB |
+| Scenario | ADC bits | Noise | Disturb | IV / circuit | Notes |
+|----------|----------|-------|---------|--------------|-------|
+| A — Ideal | 8 | none | 0 | linear / pass | baseline |
+| B — Low ADC | 4 | none | 0 | linear | quantization only |
+| C — Thermal | 8 | 0.5% G_max | 0 | linear | transient noise |
+| D — Read disturb | 8 | none | 1000 | linear | neighbor drift |
+| E — Combined | 4 | 0.5% G_max | 1000 | linear | worst-case mix |
+| F — Multi-layer | 8 | none | 0 | linear / pass | 2-layer, quantized L1→L2 |
+| F_relu — Multi-layer + rectifier | 8 | none | 0 | linear / diode_rectifier | inter-layer circuit |
+| G — ReLU | 8 | none | 0 | linear | algebraic post-MAC |
+| H — Sigmoid | 8 | none | 0 | linear | algebraic post-MAC |
+| I — Write endurance | 8 | none | 0 | linear | 80k cycles |
+| J — Nonlinear I-V | 8 | none | 0 | power_law (α=1.5) | crosspoint nonlinearity |
+| K — Interlayer circuit | 8 | none | 0 | soft_saturation / tunable_sigmoid | 2-layer + physical circuit |
 
-**Theory column:** classical ADC SQNR: `SQNR ≈ 6.02 × n_bits + 1.76 dB`. The gap vs. Scenario A is expected—the formula assumes a full-scale sine; this demo uses a fixed DC vector.
+**Theory SNR (ADC):** classical SQNR `≈ 6.02 × n_bits + 1.76 dB` — see `snr_adc_theory_db` in CSV.
 
 ---
 
@@ -244,13 +487,26 @@ Nine scenarios use one **N×M** weight matrix (default 4×4 demo) and an **N**-v
 | `noise_seed` | 42 | Fixed RNG seed for reproducible tests |
 | `activation_sigmoid_steepness` | 6 | Sharpness of analog sigmoid (scenario H) |
 | `write_endurance_lambda` | 0 (1e−5 in **I**) | Exponent in exp(−λ × cycles); 0 disables scaling |
+| `iv_model` | `linear` | Crosspoint I-V: `linear`, `power_law`, `soft_saturation` |
+| `iv_exponent` | 1.0 | α for power-law model |
+| `iv_v_ref` | 1.0 V | Reference voltage for power-law |
+| `iv_v_sat` | 1.5 V | Saturation scale for soft-saturation |
+| `interlayer_circuit` | `pass_through` | Between layers: `pass_through`, `diode_rectifier`, `tunable_sigmoid` |
+| `circuit_i_threshold` | 0 A | Diode-rectifier threshold current |
+| `circuit_steepness` | 6 | Tunable sigmoid sharpness |
 
 ### JSON overlay (`--config`)
 
-Pass a single JSON **object** whose keys match the table above (same names as in `config.hpp`). Values must be JSON numbers. Unknown keys are ignored. Example:
+Pass a single JSON **object** whose keys match the table above. Values are JSON numbers, except **`iv_model`** and **`interlayer_circuit`** which accept strings. Unknown keys are ignored. Example:
 
 ```json
-{ "G_max": 1e-4, "I_min": -6.02e-5, "noise_seed": 42 }
+{
+  "G_max": 1e-4,
+  "iv_model": "power_law",
+  "iv_exponent": 1.5,
+  "interlayer_circuit": "diode_rectifier",
+  "circuit_i_threshold": 1e-6
+}
 ```
 
 ### CSV weights (`--weights`), inputs (`--inputs`), second layer (`--weights2`)
@@ -259,11 +515,46 @@ Pass a single JSON **object** whose keys match the table above (same names as in
 
 **`--inputs`:** exactly **N** numbers for the DAC path (where **N** is the row count of `--weights`; comma-separated and/or one value per line). Values outside **[0, 1]** are clamped with a warning.
 
-**`--weights2`:** optional second matrix for scenario **F** only; its row count must match the column count **M** of `--weights`. If omitted, **F** uses **0.5×I** (size **M×M**) to keep **I_net** in range for the default ADC window.
+**`--weights2`:** optional second matrix **M×K** for scenarios **F**, **F_relu**, and **K**; row count must match column count **M** of `--weights`. Column count **K** is free. If omitted, **F** uses **0.5×I** (size **M×M**).
 
 Without **`--weights`**, the original 4×4 demo matrix and demo input vector are used. With **`--weights`** but without **`--inputs`**, inputs default to a ramp across **[0.15, 0.85]**. For the same numeric behavior as the classic demo while using CSV files, use **`volt.example.weights.csv`** and **`volt.example.inputs.csv`** together.
 
 For arbitrary pretrained weights, tune **`I_min` / `I_range`** (and possibly **`G_max`**) via **`--config`** so the ADC window matches your signal swing.
+
+---
+
+## Python bindings (optional)
+
+The C++ core has **zero required dependencies**. An optional **pybind11** module lets ML workflows drive the simulator from Python lists (NumPy arrays work via `.tolist()`).
+
+**Build:**
+
+```bash
+cmake -S . -B build -DBUILD_PYTHON_BINDINGS=ON
+cmake --build build
+export PYTHONPATH=build   # Linux/macOS: build/volt*.so lives here
+python3 python/smoke_test.py
+```
+
+**Example:**
+
+```python
+import volt
+
+cfg = volt.Config()
+cfg.iv_model = volt.IvModel.PowerLaw
+cfg.iv_exponent = 1.5
+
+W = [[0.8, -0.3], [-0.6, 0.9]]
+x = [0.5, 0.7]
+currents, levels = volt.forward(W, x, cfg)
+
+W2 = [[0.5, 0.0], [0.0, 0.5]]
+out = volt.two_layer_forward(W, W2, x, cfg, interlayer="diode_rectifier")
+print(out["mse"], out["snr_db"])
+```
+
+CI runs a separate [`.github/workflows/python-bindings.yml`](.github/workflows/python-bindings.yml) job on Ubuntu with `BUILD_PYTHON_BINDINGS=ON`.
 
 ---
 
@@ -273,7 +564,7 @@ For arbitrary pretrained weights, tune **`I_min` / `I_range`** (and possibly **`
 - **Voltages** stay in `[V_min, V_max]`; out-of-range inputs are not supported.
 - **Arithmetic:** `float` in the simulation path; `double` only for reference checks where noted.
 - **Tests:** fixed seeds; CI does not accept nondeterministic outputs.
-- **Dependencies:** C++17 standard library only.
+- **Dependencies:** C++17 standard library for the core binary and tests; **pybind11** is optional (Python bindings only).
 
 ---
 
@@ -285,3 +576,7 @@ For arbitrary pretrained weights, tune **`I_min` / `I_range`** (and possibly **`
 - [x] Benchmark mode (matrix size sweeps, throughput) — `./volt --benchmark`; `benchmark.csv` (GMAC/s, forwards/s).
 - [x] JSON config at runtime (no recompile for physics params) — `./volt --config FILE`; `config_json.hpp`; `volt.example.json`.
 - [x] CSV weight import for real pretrained weights — `./volt --weights FILE`; optional **`--inputs`**, **`--weights2`**, N×M / multi-layer pipeline; `weights_csv.hpp`; `volt.example.weights.csv` / `volt.example.inputs.csv`.
+- [x] **Robust 2-layer pipeline** — `two_layer_pipeline.hpp`; M×K `--weights2`; quantized ADC→DAC reference; optional noise/disturb/endurance on both layers (`TwoLayerOptions`).
+- [x] **Nonlinear crosspoint I-V** — `iv_model.hpp`; `linear` / `power_law` / `soft_saturation`; scenario **J_nonlinear_iv**.
+- [x] **Inter-layer activation circuit** — `activation_circuit.hpp`; `diode_rectifier` / `tunable_sigmoid`; scenarios **F_multilayer_relu**, **K_interlayer_circuit**.
+- [x] **Python bindings (optional)** — `cmake -DBUILD_PYTHON_BINDINGS=ON`; module `volt`; `python/smoke_test.py`.

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "volt-aimc"
+version = "0.0.2"
+description = "Python bindings for VOLT — Virtual Ohmic Logic Testbench"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[tool.scikit-build]
+cmake.args = ["-DBUILD_PYTHON_BINDINGS=ON"]
+wheel.packages = []

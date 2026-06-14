@@ -1,8 +1,11 @@
 #include "activation.hpp"
+#include "activation_circuit.hpp"
 #include "adc.hpp"
 #include "config.hpp"
 #include "config_json.hpp"
 #include "crossbar.hpp"
+#include "iv_model.hpp"
+#include "two_layer_pipeline.hpp"
 #include "weights_csv.hpp"
 #include "dac.hpp"
 #include "noise.hpp"
@@ -298,6 +301,91 @@ int main() {
         std::remove(tmp);
         assert_near(in[0], 0.2f, 1e-9f, "in[0]");
         assert_near(in[2], 0.8f, 1e-9f, "in[2]");
+    }
+
+    // --- Nonlinear I-V models ---
+    {
+        volt::Config c;
+        const float V = 0.5f;
+        const float G = 1e-4f;
+        assert_near(volt::cell_current(V, G, volt::IvModel::Linear, c), G * V, 1e-12f,
+                    "linear I = G*V");
+        c.iv_exponent = 2.0f;
+        c.iv_v_ref = 1.0f;
+        const float exp_pl = G * V * V;
+        assert_near(volt::cell_current(V, G, volt::IvModel::PowerLaw, c), exp_pl, 1e-12f,
+                    "power law alpha=2");
+        c.iv_v_sat = 1.0f;
+        const float exp_ss = G * V / (1.0f + V);
+        assert_near(volt::cell_current(V, G, volt::IvModel::SoftSaturation, c), exp_ss, 1e-12f,
+                    "soft saturation");
+
+        volt::CrossbarArray xb(2, 2, c);
+        c.iv_model = volt::IvModel::Linear;
+        xb = volt::CrossbarArray(2, 2, c);
+        std::vector<std::vector<float>> Wp = {{1.0f, 0.0f}, {0.0f, 1.0f}};
+        xb.load_weights(Wp);
+        std::vector<float> Vv = {0.3f, 0.7f};
+        auto I_lin = xb.apply_voltage(Vv);
+        c.iv_model = volt::IvModel::Linear;
+        c.iv_exponent = 1.0f;
+        volt::CrossbarArray xb2(2, 2, c);
+        xb2.load_weights(Wp);
+        auto I_lin2 = xb2.apply_voltage(Vv);
+        assert_near(I_lin[0], I_lin2[0], 1e-6f * cfg.G_max, "linear crossbar default");
+    }
+
+    // --- Activation circuit ---
+    {
+        volt::Config c;
+        assert_near(volt::circuit_transfer(-1e-5f, volt::CircuitModel::PassThrough, c), -1e-5f,
+                    1e-12f, "pass through");
+        c.circuit_i_threshold = 1e-6f;
+        assert_near(volt::circuit_transfer(5e-6f, volt::CircuitModel::DiodeRectifier, c), 4e-6f,
+                    1e-12f, "diode rectifier threshold");
+        assert_near(volt::circuit_transfer(-5e-6f, volt::CircuitModel::DiodeRectifier, c), 0.0f,
+                    1e-12f, "diode rectifier negative");
+        const float ys =
+            volt::circuit_transfer(0.0f, volt::CircuitModel::TunableSigmoid, c);
+        assert_true(ys >= c.I_min && ys <= c.I_min + c.I_range, "circuit sigmoid in window");
+
+        volt::IvModel iv;
+        assert_true(volt::parse_iv_model("power_law", iv), "parse iv power_law");
+        assert_true(iv == volt::IvModel::PowerLaw, "iv enum power_law");
+        volt::CircuitModel cm;
+        assert_true(volt::parse_circuit_model("diode_rectifier", cm), "parse circuit");
+        assert_true(cm == volt::CircuitModel::DiodeRectifier, "circuit enum diode");
+    }
+
+    // --- Two-layer M×K pipeline ---
+    {
+        const std::vector<std::vector<double>> W1 = {
+            {0.5, -0.2},
+            {0.1, 0.3},
+        };
+        const std::vector<std::vector<double>> W2 = {
+            {0.4, -0.1, 0.2},
+            {-0.3, 0.6, 0.0},
+        };
+        const std::vector<float> inputs = {0.5f, 0.7f};
+        volt::Config c;
+        volt::TwoLayerOptions opt;
+        auto r = volt::run_two_layer("test_mxk", c, W1, W2, inputs, opt);
+        assert_true(r.mse >= 0.0, "two layer MxK mse non-negative");
+        assert_true(std::isfinite(r.snr_db), "two layer MxK snr finite");
+    }
+
+    // --- JSON string keys for iv_model / interlayer_circuit ---
+    {
+        volt::Config c;
+        std::string err;
+        assert_true(volt::load_config_from_json(
+                         R"({"iv_model":"soft_saturation","interlayer_circuit":"diode_rectifier"})",
+                         c, err),
+                    err.c_str());
+        assert_true(c.iv_model == volt::IvModel::SoftSaturation, "JSON iv_model string");
+        assert_true(c.interlayer_circuit == volt::CircuitModel::DiodeRectifier,
+                    "JSON interlayer_circuit string");
     }
 
     std::cout << "test_core: all checks passed\n";
