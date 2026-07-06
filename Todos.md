@@ -11,10 +11,9 @@ All computation is performed by simulating Ohm's Law (I = V × G) and Kirchhoff'
 
 ## Architectural Decisions (Decided Before Writing Any Code)
 
-### Decision 1: Language — C++17
-Native C++ with zero external dependencies. All math is done with the standard library.
-Rationale: maximum portability, predictable performance, and no runtime overhead from
-third-party packages.
+### Decision 1: Language — Rust
+Native Rust with minimal dependencies (`clap`, `rand`, `serde_json`). Optional PyO3 Python bindings via maturin.
+Rationale: memory safety, modern tooling (Cargo), and strong cross-platform CI while keeping the simulation core lean.
 
 ### Decision 2: Negative Weight Encoding — Differential Pair
 Physical conductance cannot be negative (G ≥ 0), so each neural network weight is

@@ -1,0 +1,14 @@
+[package]
+name = "volt-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "VOLT simulator CLI"
+
+[[bin]]
+name = "volt"
+path = "src/main.rs"
+
+[dependencies]
+volt-core = { path = "../volt-core" }
+clap = { version = "4", features = ["derive"] }

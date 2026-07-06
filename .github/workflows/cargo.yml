@@ -1,0 +1,40 @@
+name: Cargo CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --workspace
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: CLI smoke — benchmark
+        run: cargo run --release -p volt-cli -- --benchmark
+
+      - name: CLI smoke — config
+        run: cargo run --release -p volt-cli -- --config volt.example.json
+
+      - name: CLI smoke — weights
+        run: cargo run --release -p volt-cli -- --weights volt.example.weights.csv --inputs volt.example.inputs.csv

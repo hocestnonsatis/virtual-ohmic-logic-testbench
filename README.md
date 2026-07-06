@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/releases/latest"><img src="https://img.shields.io/github/v/release/hocestnonsatis/virtual-ohmic-logic-testbench?sort=semver&amp;logo=github&amp;label=release" alt="Latest release" /></a>
   &nbsp;
-  <a href="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml"><img src="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cargo.yml"><img src="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cargo.yml/badge.svg" alt="CI" /></a>
   &nbsp;
   <a href="https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/blob/main/LICENSE"><img src="https://img.shields.io/github/license/hocestnonsatis/virtual-ohmic-logic-testbench?label=license" alt="License" /></a>
   &nbsp;
@@ -11,12 +11,12 @@
 </p>
 
 <p align="center">
-  <sub>Tree version <code>0.0.2</code> · Tag a release as <code>v0.0.2</code> to publish binaries via GitHub Actions · <a href="#releases--downloads">Downloads</a></sub>
+  <sub>Tree version <code>0.1.0</code> · Tag a release as <code>v0.1.0</code> to publish binaries via GitHub Actions · <a href="#releases--downloads">Downloads</a></sub>
 </p>
 
 Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar arrays. VOLT models voltage-based neural inference with Ohm’s law and Kirchhoff’s current law—useful for exploring feasibility before hardware exists.
 
-**Stack:** C++17, CMake ≥ 3.14, standard library only (no third-party dependencies).
+**Stack:** Rust (edition 2021), Cargo. Core uses `clap`, `rand`, `serde_json`; optional Python bindings via PyO3/maturin.
 
 ---
 
@@ -29,7 +29,7 @@ Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar ar
 5. [Repository layout](#repository-layout)  
 6. [Design notes](#design-notes) — differential pair, bipolar ADC, read disturb, activations, endurance  
 7. [Scenarios & results](#scenarios--results)  
-8. [Defaults (`config.hpp`)](#defaults-confighpp)  
+8. [Defaults (`volt-core` config)](#defaults-volt-core-config)  
 9. [Project rules](#project-rules)  
 10. [Roadmap](#roadmap)
 
@@ -261,41 +261,42 @@ Optional physics (scenarios C–E, I) can alter `G_pos` / `G_neg` before or duri
 
 ## Quick start
 
-**Requirements:** CMake ≥ 3.14; GCC or Clang with C++17.
+**Requirements:** Rust toolchain (stable); [rustup](https://rustup.rs/) recommended.
 
 ```bash
-cmake -S . -B build
-cmake --build build
+cargo build --release
 ```
 
-Run the simulator from the build directory (so `results.csv` is written next to the binary):
+Run the simulator (writes `results.csv` in the current directory):
 
 ```bash
-cd build && ./volt
+cargo run --release -p volt-cli
+# or after build:
+./target/release/volt
 ```
 
 **Benchmark mode** (matrix size sweep, ~40 ms per size; writes `benchmark.csv`):
 
 ```bash
-cd build && ./volt --benchmark
+cargo run --release -p volt-cli -- --benchmark
 ```
 
 **Physics JSON** (optional; merged onto defaults for all scenarios and for `--benchmark`):
 
 ```bash
-cd build && ./volt --config ../volt.example.json
+cargo run --release -p volt-cli -- --config volt.example.json
 ```
 
 **Weight matrix CSV** (optional **N×M**, N ≤ 512 and M ≤ 512; comma-separated rows):
 
 ```bash
-cd build && ./volt --weights ../volt.example.weights.csv
+cargo run --release -p volt-cli -- --weights volt.example.weights.csv
 ```
 
 **Inputs CSV** (optional; **N** values in `[0,1]` for the DAC — one line and/or one number per line). If you omit `--inputs` after `--weights`, a built-in ramp vector is used; with the built-in 4×4 demo (no `--weights`), the original demo input is kept.
 
 ```bash
-cd build && ./volt --weights ../volt.example.weights.csv --inputs ../volt.example.inputs.csv
+cargo run --release -p volt-cli -- --weights volt.example.weights.csv --inputs volt.example.inputs.csv
 ```
 
 **Second layer (scenario F)** — optional **`--weights2`** matrix for layer-2; default is **0.5×I** with size **M×M** so currents stay easier to bound.
@@ -303,7 +304,7 @@ cd build && ./volt --weights ../volt.example.weights.csv --inputs ../volt.exampl
 Run tests:
 
 ```bash
-cd build && ctest --output-on-failure
+cargo test --workspace
 ```
 
 ---
@@ -313,9 +314,9 @@ cd build && ctest --output-on-failure
 | | |
 |:--|:--|
 | **Latest** | [![GitHub release](https://img.shields.io/github/v/release/hocestnonsatis/virtual-ohmic-logic-testbench?logo=github)](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/releases/latest) |
-| **Version file** | [`VERSION`](VERSION) (current `0.0.2`) |
+| **Version file** | [`VERSION`](VERSION) (current `0.1.0`) |
 
-Pushing a git tag matching `v*.*.*` (for example `v0.0.2`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): **Linux** (g++, `.tar.gz`), **Windows** (MSVC, `.zip`), **macOS** (Clang, `.tar.gz`). Each archive contains the `volt` binary (`volt.exe` on Windows), `README.md`, `VERSION`, and `LICENSE`.
+Pushing a git tag matching `v*.*.*` (for example `v0.1.0`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): **Linux**, **Windows**, and **macOS** archives built with Cargo. Each archive contains the `volt` binary (`volt.exe` on Windows), `README.md`, `VERSION`, and `LICENSE`.
 
 | Platform | Asset name pattern |
 |----------|-------------------|
@@ -323,7 +324,7 @@ Pushing a git tag matching `v*.*.*` (for example `v0.0.2`) runs [`.github/workfl
 | Windows x64 | `volt-<tag>-windows-x64.zip` |
 | macOS | `volt-<tag>-macos.tar.gz` |
 
-After extracting, run `./volt` from the inner folder (Linux/macOS) or `volt.exe` (Windows). CI status for every push/PR: [![CI](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cmake-multi-platform.yml).
+After extracting, run `./volt` from the inner folder (Linux/macOS) or `volt.exe` (Windows). CI status for every push/PR: [![CI](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cargo.yml/badge.svg)](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/actions/workflows/cargo.yml).
 
 ---
 
@@ -331,32 +332,23 @@ After extracting, run `./volt` from the inner folder (Linux/macOS) or `volt.exe`
 
 ```
 .
-├── VERSION                 # Semver string for releases (e.g. 0.0.2)
+├── VERSION                 # Semver string for releases (e.g. 0.1.0)
 ├── LICENSE                 # MIT
+├── Cargo.toml              # Workspace root
 ├── volt.example.json       # Example `--config` (subset of fields)
 ├── volt.example.weights.csv # Example `--weights` (4×4)
 ├── volt.example.inputs.csv  # Example `--inputs` (length 4)
-├── src/
-│   ├── config.hpp          # Physical constants
-│   ├── config_json.hpp / .cpp # Optional JSON overlay for physics params
-│   ├── weights_csv.hpp / .cpp # Optional `--weights` CSV import
-│   ├── dac.hpp / dac.cpp   # Digital → voltage
-│   ├── adc.hpp / adc.cpp   # Current → digital
-│   ├── crossbar.hpp / .cpp # Weight matrix (differential pair)
-│   ├── noise.hpp / .cpp    # Thermal noise, read disturb, write endurance
-│   ├── activation.hpp / .cpp # ReLU / sigmoid on I_net (optional)
-│   ├── activation_circuit.hpp / .cpp # Physical inter-layer I-V circuit
-│   ├── iv_model.hpp / .cpp   # Nonlinear crosspoint I = G × f(V)
-│   ├── two_layer_pipeline.hpp / .cpp # 2-layer ADC→DAC chain
-│   ├── benchmark.hpp / .cpp  # Optional `--benchmark` sweep
-│   └── main.cpp            # Pipeline + scenarios A–I
-├── tests/
-│   ├── test_core.cpp
-│   └── test_equivalence.cpp  # Regression: MSE < 1e-6 (ideal path)
-├── .github/workflows/
-│   ├── cmake-multi-platform.yml
-│   └── release.yml         # Tag v*.*.* → Release + Linux / Windows / macOS binaries
-└── CMakeLists.txt
+├── crates/
+│   ├── volt-core/          # Simulation library
+│   ├── volt-cli/           # `volt` binary (scenarios A–K)
+│   └── volt-py/            # PyO3 Python module
+├── python/
+│   └── smoke_test.py       # Optional Python bindings smoke test
+├── pyproject.toml          # maturin build for volt-py
+└── .github/workflows/
+    ├── cargo.yml           # CI: build + test + CLI smoke
+    ├── python-bindings.yml # maturin + smoke_test.py
+    └── release.yml         # Tag v*.*.* → Release binaries
 ```
 
 ---
@@ -473,7 +465,7 @@ Eleven scenarios use one **N×M** weight matrix (default 4×4 demo) and an **N**
 
 ---
 
-## Defaults (`config.hpp`)
+## Defaults (`volt-core` config)
 
 | Constant | Typical value | Role |
 |----------|---------------|------|
@@ -525,14 +517,13 @@ For arbitrary pretrained weights, tune **`I_min` / `I_range`** (and possibly **`
 
 ## Python bindings (optional)
 
-The C++ core has **zero required dependencies**. An optional **pybind11** module lets ML workflows drive the simulator from Python lists (NumPy arrays work via `.tolist()`).
+The Rust core has **minimal dependencies**. An optional **PyO3** module lets ML workflows drive the simulator from Python lists (NumPy arrays work via `.tolist()`).
 
 **Build:**
 
 ```bash
-cmake -S . -B build -DBUILD_PYTHON_BINDINGS=ON
-cmake --build build
-export PYTHONPATH=build   # Linux/macOS: build/volt*.so lives here
+pip install maturin
+maturin develop --release
 python3 python/smoke_test.py
 ```
 
@@ -554,7 +545,7 @@ out = volt.two_layer_forward(W, W2, x, cfg, interlayer="diode_rectifier")
 print(out["mse"], out["snr_db"])
 ```
 
-CI runs a separate [`.github/workflows/python-bindings.yml`](.github/workflows/python-bindings.yml) job on Ubuntu with `BUILD_PYTHON_BINDINGS=ON`.
+CI runs a separate [`.github/workflows/python-bindings.yml`](.github/workflows/python-bindings.yml) job with maturin.
 
 ---
 
@@ -564,13 +555,13 @@ CI runs a separate [`.github/workflows/python-bindings.yml`](.github/workflows/p
 - **Voltages** stay in `[V_min, V_max]`; out-of-range inputs are not supported.
 - **Arithmetic:** `float` in the simulation path; `double` only for reference checks where noted.
 - **Tests:** fixed seeds; CI does not accept nondeterministic outputs.
-- **Dependencies:** C++17 standard library for the core binary and tests; **pybind11** is optional (Python bindings only).
+- **Dependencies:** Rust std + small crates (`clap`, `rand`, `serde_json`) for the core binary and tests; **PyO3/maturin** is optional (Python bindings only).
 
 ---
 
 ## Roadmap
 
-- [x] Multi-layer chaining (one layer’s ADC → next layer’s DAC) — see scenario `F_multilayer` in `main.cpp`; `SimulatedADC::level_to_dac_normalized` feeds the next DAC.
+- [x] Multi-layer chaining (one layer’s ADC → next layer’s DAC) — see scenario `F_multilayer` in `volt-cli`; `SimulatedADC::level_to_dac_normalized` feeds the next DAC.
 - [x] Analog activation models (e.g. nonlinear I–V for ReLU / sigmoid) — `activation.hpp`; scenarios `G_relu`, `H_sigmoid`.
 - [x] Write endurance (e.g. `G_max` vs. write cycles) — `WriteEnduranceSimulator` in `noise.hpp` / `.cpp`, `CrossbarArray::effective_g_max()`, scenario `I_write_endurance`.
 - [x] Benchmark mode (matrix size sweeps, throughput) — `./volt --benchmark`; `benchmark.csv` (GMAC/s, forwards/s).
@@ -579,4 +570,4 @@ CI runs a separate [`.github/workflows/python-bindings.yml`](.github/workflows/p
 - [x] **Robust 2-layer pipeline** — `two_layer_pipeline.hpp`; M×K `--weights2`; quantized ADC→DAC reference; optional noise/disturb/endurance on both layers (`TwoLayerOptions`).
 - [x] **Nonlinear crosspoint I-V** — `iv_model.hpp`; `linear` / `power_law` / `soft_saturation`; scenario **J_nonlinear_iv**.
 - [x] **Inter-layer activation circuit** — `activation_circuit.hpp`; `diode_rectifier` / `tunable_sigmoid`; scenarios **F_multilayer_relu**, **K_interlayer_circuit**.
-- [x] **Python bindings (optional)** — `cmake -DBUILD_PYTHON_BINDINGS=ON`; module `volt`; `python/smoke_test.py`.
+- [x] **Python bindings (optional)** — `volt-py` crate (PyO3); `maturin`; `python/smoke_test.py`.

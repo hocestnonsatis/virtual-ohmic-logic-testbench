@@ -1,0 +1,14 @@
+[package]
+name = "volt-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python bindings for VOLT"
+
+[lib]
+name = "volt"
+crate-type = ["cdylib"]
+
+[dependencies]
+volt-core = { path = "../volt-core" }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"] }

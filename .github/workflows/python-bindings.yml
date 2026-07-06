@@ -1,29 +1,35 @@
-name: Python bindings (optional)
+name: Python bindings
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  python-bindings:
+  maturin:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y cmake g++ python3-dev
+      - uses: dtolnay/rust-toolchain@stable
 
-    - name: Configure with Python bindings
-      run: cmake -B build -DBUILD_PYTHON_BINDINGS=ON
+      - uses: Swatinem/rust-cache@v2
 
-    - name: Build
-      run: cmake --build build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Test
-      working-directory: build
-      run: ctest --output-on-failure
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build extension
+        run: maturin build --release
+
+      - name: Install wheel and smoke test
+        run: |
+          pip install target/wheels/*.whl
+          python3 python/smoke_test.py
