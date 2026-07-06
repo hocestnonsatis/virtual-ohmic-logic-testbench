@@ -1,6 +1,6 @@
 # Project memories
 
-## Stack (2026-07)
+- **Version:** 0.1.0 (Rust rewrite release)
 - **Language:** Rust (edition 2021), Cargo workspace
 - **Crates:** `volt-core` (lib), `volt-cli` (`volt` binary), `volt-py` (PyO3)
 - **Build:** `cargo build --release` / `cargo test --workspace`
