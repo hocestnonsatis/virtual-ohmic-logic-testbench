@@ -7,7 +7,7 @@ use volt_core::{
     CircuitModel, Config, CrossbarArray, IvModel, SimulatedAdc, SimulatedDac, TwoLayerOptions,
 };
 
-#[pyclass(name = "IvModel", eq, eq_int)]
+#[pyclass(name = "IvModel", eq, eq_int, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PyIvModel {
     Linear = 0,
@@ -35,7 +35,7 @@ impl From<PyIvModel> for IvModel {
     }
 }
 
-#[pyclass(name = "CircuitModel", eq, eq_int)]
+#[pyclass(name = "CircuitModel", eq, eq_int, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PyCircuitModel {
     PassThrough = 0,
@@ -63,7 +63,7 @@ impl From<PyCircuitModel> for CircuitModel {
     }
 }
 
-#[pyclass(name = "Config")]
+#[pyclass(name = "Config", from_py_object)]
 #[derive(Clone)]
 struct PyConfig {
     inner: Config,
@@ -378,13 +378,14 @@ fn forward(
 
 #[pyfunction]
 #[pyo3(signature = (w1, w2, inputs, cfg, interlayer="pass_through"))]
-fn two_layer_forward(
+fn two_layer_forward<'py>(
+    py: Python<'py>,
     w1: Vec<Vec<f32>>,
     w2: Vec<Vec<f32>>,
     inputs: Vec<f32>,
     cfg: &PyConfig,
     interlayer: &str,
-) -> PyResult<PyObject> {
+) -> PyResult<Bound<'py, PyDict>> {
     let circuit = parse_circuit_model(interlayer)
         .ok_or_else(|| PyRuntimeError::new_err(format!("unknown interlayer circuit: {interlayer}")))?;
 
@@ -403,13 +404,11 @@ fn two_layer_forward(
     let r = run_two_layer("py_two_layer", &cfg.inner, &w1d, &w2d, &inputs, &opt)
         .map_err(PyRuntimeError::new_err)?;
 
-    Python::with_gil(|py| {
-        let dict = PyDict::new(py);
-        dict.set_item("mse", r.mse)?;
-        dict.set_item("snr_db", r.snr_db)?;
-        dict.set_item("max_abs_err", r.max_abs_err)?;
-        Ok(dict.into())
-    })
+    let dict = PyDict::new(py);
+    dict.set_item("mse", r.mse)?;
+    dict.set_item("snr_db", r.snr_db)?;
+    dict.set_item("max_abs_err", r.max_abs_err)?;
+    Ok(dict)
 }
 
 #[pyfunction]

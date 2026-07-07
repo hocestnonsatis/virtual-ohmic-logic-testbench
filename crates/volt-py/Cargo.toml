@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 volt-core = { path = "../volt-core" }
-pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"] }
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }
