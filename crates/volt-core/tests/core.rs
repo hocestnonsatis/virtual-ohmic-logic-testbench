@@ -2,8 +2,9 @@ use std::fs;
 use std::io::Write;
 
 use volt_core::{
-    apply_activation_f32, circuit_transfer_f32, load_config_from_json, load_inputs_csv_file,
-    load_weights_csv_file, parse_circuit_model, parse_iv_model, run_two_layer, Activation,
+    apply_activation_f32, circuit_transfer_f32, extract_submatrix, load_config_from_json,
+    load_inputs_csv_file, load_weights_csv_file, normalize_to_symmetric_range, parse_circuit_model,
+    parse_iv_model, reshape_row_major, run_two_layer, write_weights_csv_file, Activation,
     CircuitModel, Config, CrossbarArray, IvModel, ReadDisturbSimulator, SimulatedAdc,
     SimulatedDac, ThermalNoiseInjector, TwoLayerOptions, WriteEnduranceSimulator, cell_current,
 };
@@ -244,6 +245,45 @@ fn iv_and_circuit_tests() {
         1e-12,
         "diode",
     );
+}
+
+#[test]
+fn weight_norm_symmetric_range() {
+    let raw = vec![-10.0, 0.0, 10.0];
+    let norm = normalize_to_symmetric_range(&raw).unwrap();
+    assert_near(norm[0] as f32, -1.0, 1e-12, "min -> -1");
+    assert_near(norm[1] as f32, 0.0, 1e-12, "mid -> 0");
+    assert_near(norm[2] as f32, 1.0, 1e-12, "max -> 1");
+}
+
+#[test]
+fn weight_norm_flat_constant_is_zero() {
+    let raw = vec![3.0, 3.0, 3.0];
+    let norm = normalize_to_symmetric_range(&raw).unwrap();
+    assert_near(norm[0] as f32, 0.0, 1e-12, "constant -> 0");
+    assert_near(norm[2] as f32, 0.0, 1e-12, "constant -> 0");
+}
+
+#[test]
+fn weight_norm_reshape_and_slice() {
+    let flat = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let full = reshape_row_major(&flat, 2, 3).unwrap();
+    let sub = extract_submatrix(&full, 0, 1, 2, 2).unwrap();
+    assert_eq!(sub.len(), 2);
+    assert_eq!(sub[0], vec![2.0, 3.0]);
+    assert_eq!(sub[1], vec![5.0, 6.0]);
+}
+
+#[test]
+fn weights_csv_round_trip() {
+    let path = "volt_test_weights_roundtrip.csv";
+    let original = vec![vec![0.8, -0.3], vec![-0.6, 0.9]];
+    write_weights_csv_file(path, &original).unwrap();
+    let loaded = load_weights_csv_file(path).unwrap();
+    let _ = fs::remove_file(path);
+    assert_eq!(loaded.len(), 2);
+    assert_near(loaded[0][0] as f32, 0.8, 1e-9, "rt w00");
+    assert_near(loaded[1][1] as f32, 0.9, 1e-9, "rt w11");
 }
 
 #[test]

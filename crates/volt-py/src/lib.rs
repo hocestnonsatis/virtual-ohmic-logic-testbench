@@ -3,8 +3,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use volt_core::{
-    cell_current, circuit_transfer_f32, load_config_from_json, parse_circuit_model, run_two_layer,
-    CircuitModel, Config, CrossbarArray, IvModel, SimulatedAdc, SimulatedDac, TwoLayerOptions,
+    cell_current, circuit_transfer_f32, load_config_from_json, parse_circuit_model, prepare_weight_matrix,
+    run_two_layer, write_weights_csv_file, CircuitModel, Config, CrossbarArray, IvModel, SimulatedAdc,
+    SimulatedDac, TwoLayerOptions,
 };
 
 #[pyclass(name = "IvModel", eq, eq_int, from_py_object)]
@@ -423,6 +424,35 @@ fn py_circuit_transfer(i_in: f32, model: PyCircuitModel, cfg: &PyConfig) -> f32 
     circuit_transfer_f32(i_in, model.into(), &cfg.inner)
 }
 
+#[pyfunction]
+#[pyo3(signature = (flat, rows, cols, row_off=0, col_off=0, out_rows=None, out_cols=None))]
+fn normalize_weight_matrix(
+    flat: Vec<f64>,
+    rows: usize,
+    cols: usize,
+    row_off: usize,
+    col_off: usize,
+    out_rows: Option<usize>,
+    out_cols: Option<usize>,
+) -> PyResult<Vec<Vec<f32>>> {
+    let or = out_rows.unwrap_or(rows.saturating_sub(row_off));
+    let oc = out_cols.unwrap_or(cols.saturating_sub(col_off));
+    let m = prepare_weight_matrix(&flat, rows, cols, row_off, col_off, or, oc)
+        .map_err(PyRuntimeError::new_err)?;
+    Ok(m.into_iter()
+        .map(|row| row.into_iter().map(|v| v as f32).collect())
+        .collect())
+}
+
+#[pyfunction]
+fn write_weights_csv(path: &str, weights: Vec<Vec<f32>>) -> PyResult<()> {
+    let wd: Vec<Vec<f64>> = weights
+        .iter()
+        .map(|row| row.iter().map(|&x| x as f64).collect())
+        .collect();
+    write_weights_csv_file(path, &wd).map_err(PyRuntimeError::new_err)
+}
+
 #[pymodule]
 fn volt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyIvModel>()?;
@@ -436,5 +466,7 @@ fn volt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(two_layer_forward, m)?)?;
     m.add_function(wrap_pyfunction!(py_cell_current, m)?)?;
     m.add_function(wrap_pyfunction!(py_circuit_transfer, m)?)?;
+    m.add_function(wrap_pyfunction!(normalize_weight_matrix, m)?)?;
+    m.add_function(wrap_pyfunction!(write_weights_csv, m)?)?;
     Ok(())
 }

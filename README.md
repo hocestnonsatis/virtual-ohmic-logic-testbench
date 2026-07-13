@@ -513,6 +513,18 @@ Without **`--weights`**, the original 4×4 demo matrix and demo input vector are
 
 For arbitrary pretrained weights, tune **`I_min` / `I_range`** (and possibly **`G_max`**) via **`--config`** so the ADC window matches your signal swing.
 
+### Importing weights from GGUF
+
+VOLT does not run full LLM inference. To simulate one layer from a GGUF checkpoint:
+
+1. Build Python bindings: `maturin develop --release` (use a venv; see [Python bindings](#python-bindings-optional))
+2. Install helper: `pip install gguf numpy`
+3. List tensors: `python python/gguf_to_volt.py --gguf model.gguf --list-tensors`
+4. Extract slice (max 512×512): `python python/gguf_to_volt.py --gguf model.gguf --tensor blk.0.attn_q.weight --rows 128 --cols 128 --out layer0.csv`
+5. Run simulation: `./volt --weights layer0.csv --inputs volt.example.inputs.csv`
+
+Weights are min-max normalized to `[-1, 1]` per row before export.
+
 ---
 
 ## Python bindings (optional)

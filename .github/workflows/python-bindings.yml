@@ -33,3 +33,9 @@ jobs:
         run: |
           pip install target/wheels/*.whl
           python3 python/smoke_test.py
+
+      - name: Install gguf for import test
+        run: pip install gguf numpy
+
+      - name: GGUF import integration test
+        run: python python/test_gguf_to_volt.py

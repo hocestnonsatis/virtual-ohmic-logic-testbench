@@ -9,6 +9,7 @@ pub mod dac;
 pub mod iv_model;
 pub mod noise;
 pub mod two_layer;
+pub mod weight_norm;
 pub mod weights_csv;
 
 pub use activation::{apply_activation_f32, apply_activation_f64, Activation};
@@ -24,6 +25,10 @@ pub use dac::SimulatedDac;
 pub use iv_model::{cell_current, iv_model_name, parse_iv_model};
 pub use noise::{ReadDisturbSimulator, ThermalNoiseInjector, WriteEnduranceSimulator};
 pub use two_layer::{run_two_layer, TwoLayerOptions, TwoLayerResult};
+pub use weight_norm::{
+    extract_submatrix, normalize_to_symmetric_range, prepare_weight_matrix, reshape_row_major,
+};
 pub use weights_csv::{
-    load_inputs_csv_file, load_weights_csv_file, K_MAX_WEIGHTS_COLS, K_MAX_WEIGHTS_ROWS,
+    load_inputs_csv_file, load_weights_csv_file, write_weights_csv_file, K_MAX_WEIGHTS_COLS,
+    K_MAX_WEIGHTS_ROWS,
 };

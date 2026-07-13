@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 
 pub const K_MAX_WEIGHTS_ROWS: i32 = 512;
 pub const K_MAX_WEIGHTS_COLS: i32 = 512;
@@ -74,6 +74,37 @@ pub fn load_weights_csv_file(path: &str) -> Result<Vec<Vec<f64>>, String> {
         }
     }
     Ok(out)
+}
+
+pub fn write_weights_csv_file(path: &str, weights: &[Vec<f64>]) -> Result<(), String> {
+    if weights.is_empty() {
+        return Err("write_weights_csv: empty matrix".into());
+    }
+    let cols = weights[0].len();
+    if cols == 0 {
+        return Err("write_weights_csv: empty row".into());
+    }
+    for (i, row) in weights.iter().enumerate() {
+        if row.len() != cols {
+            return Err(format!("write_weights_csv: ragged row {i}"));
+        }
+    }
+    if weights.len() > K_MAX_WEIGHTS_ROWS as usize {
+        return Err("write_weights_csv: row count exceeds k_max_weights_rows".into());
+    }
+    if cols > K_MAX_WEIGHTS_COLS as usize {
+        return Err("write_weights_csv: column count exceeds k_max_weights_cols".into());
+    }
+    let mut f = std::fs::File::create(path)
+        .map_err(|e| format!("write_weights_csv: cannot create {path}: {e}"))?;
+    writeln!(f, "# VOLT weights export")
+        .map_err(|e| format!("write_weights_csv: write error: {e}"))?;
+    for row in weights {
+        let line: Vec<String> = row.iter().map(|v| format!("{v:.17}")).collect();
+        writeln!(f, "{}", line.join(","))
+            .map_err(|e| format!("write_weights_csv: write error: {e}"))?;
+    }
+    Ok(())
 }
 
 pub fn load_inputs_csv_file(path: &str, expected_n: i32) -> Result<Vec<f32>, String> {
