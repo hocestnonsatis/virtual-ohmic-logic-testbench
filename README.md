@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <sub>Tree version <code>0.1.0</code> · Tag a release as <code>v0.1.0</code> to publish binaries via GitHub Actions · <a href="#releases--downloads">Downloads</a></sub>
+  <sub>Tree version <code>0.2.0</code> · Tag a release as <code>v0.2.0</code> to publish binaries via GitHub Actions · <a href="#releases--downloads">Downloads</a></sub>
 </p>
 
 Software physics simulator for **Analog In-Memory Computing (AIMC)** crossbar arrays. VOLT models voltage-based neural inference with Ohm’s law and Kirchhoff’s current law—useful for exploring feasibility before hardware exists.
@@ -314,9 +314,9 @@ cargo test --workspace
 | | |
 |:--|:--|
 | **Latest** | [![GitHub release](https://img.shields.io/github/v/release/hocestnonsatis/virtual-ohmic-logic-testbench?logo=github)](https://github.com/hocestnonsatis/virtual-ohmic-logic-testbench/releases/latest) |
-| **Version file** | [`VERSION`](VERSION) (current `0.1.0`) |
+| **Version file** | [`VERSION`](VERSION) (current `0.2.0`) |
 
-Pushing a git tag matching `v*.*.*` (for example `v0.1.0`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): **Linux**, **Windows**, and **macOS** archives built with Cargo. Each archive contains the `volt` binary (`volt.exe` on Windows), `README.md`, `VERSION`, and `LICENSE`.
+Pushing a git tag matching `v*.*.*` (for example `v0.2.0`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): **Linux**, **Windows**, and **macOS** archives built with Cargo. Each archive contains the `volt` binary (`volt.exe` on Windows), `README.md`, `VERSION`, and `LICENSE`.
 
 | Platform | Asset name pattern |
 |----------|-------------------|
@@ -332,22 +332,25 @@ After extracting, run `./volt` from the inner folder (Linux/macOS) or `volt.exe`
 
 ```
 .
-├── VERSION                 # Semver string for releases (e.g. 0.1.0)
+├── VERSION                 # Semver string for releases (e.g. 0.2.0)
 ├── LICENSE                 # MIT
 ├── Cargo.toml              # Workspace root
 ├── volt.example.json       # Example `--config` (subset of fields)
 ├── volt.example.weights.csv # Example `--weights` (4×4)
 ├── volt.example.inputs.csv  # Example `--inputs` (length 4)
 ├── crates/
-│   ├── volt-core/          # Simulation library
+│   ├── volt-core/          # Simulation library (incl. weight_norm, weights_csv)
 │   ├── volt-cli/           # `volt` binary (scenarios A–K)
 │   └── volt-py/            # PyO3 Python module
 ├── python/
-│   └── smoke_test.py       # Optional Python bindings smoke test
+│   ├── smoke_test.py       # Optional Python bindings smoke test
+│   ├── gguf_to_volt.py     # GGUF tensor → VOLT weights CSV
+│   └── test_gguf_to_volt.py # GGUF import integration test
+├── docs/superpowers/plans/ # Implementation plans
 ├── pyproject.toml          # maturin build for volt-py
 └── .github/workflows/
     ├── cargo.yml           # CI: build + test + CLI smoke
-    ├── python-bindings.yml # maturin + smoke_test.py
+    ├── python-bindings.yml # maturin + smoke_test + GGUF import test
     └── release.yml         # Tag v*.*.* → Release binaries
 ```
 
@@ -583,3 +586,4 @@ CI runs a separate [`.github/workflows/python-bindings.yml`](.github/workflows/p
 - [x] **Nonlinear crosspoint I-V** — `iv_model.hpp`; `linear` / `power_law` / `soft_saturation`; scenario **J_nonlinear_iv**.
 - [x] **Inter-layer activation circuit** — `activation_circuit.hpp`; `diode_rectifier` / `tunable_sigmoid`; scenarios **F_multilayer_relu**, **K_interlayer_circuit**.
 - [x] **Python bindings (optional)** — `volt-py` crate (PyO3); `maturin`; `python/smoke_test.py`.
+- [x] **GGUF weight import** — `python/gguf_to_volt.py`; PyO3 `normalize_weight_matrix` / `write_weights_csv`; extract a named tensor from a GGUF checkpoint, normalize to `[-1, 1]`, export CSV for `--weights` (max 512×512; not full LLM inference).

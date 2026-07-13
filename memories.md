@@ -1,5 +1,6 @@
 # Project memories
 
+- **Version:** 0.2.0 (GGUF weight import release)
 - **PyO3:** 0.29.0+ (security: fixes GHSA alerts for 0.23.x)
 - **Language:** Rust (edition 2021), Cargo workspace
 - **Crates:** `volt-core` (lib), `volt-cli` (`volt` binary), `volt-py` (PyO3)
